@@ -45,7 +45,7 @@ Each site is created under `/sites/DOMAIN/` with the following structure:
 ### 1. Site Types
 
 #### PHP Sites
-- Supports PHP versions 81, 82, 83 (dynamically detected)
+- Supports PHP versions 82, 83, 84 (dynamically detected)
 - PHP-FPM pool per site with isolated configuration
 - WordPress optimization available
 - Automatic PHP extension installation
@@ -67,7 +67,7 @@ Each site is created under `/sites/DOMAIN/` with the following structure:
 #### Access Control
 - **SSH Access**: Key-based authentication only (no passwords)
 - **Fish Shell**: Default shell for site users
-- **SSH Restrictions**: No TCP/Agent forwarding, no X11, no tunnels
+- **SSH Access**: Standard SSH access with Fish shell
 - **Read-only Mode**: Sites can be toggled between read-only and writable states
 - **Directory Protection**: Sensitive directories blocked in Nginx
 
@@ -90,14 +90,13 @@ Each site automatically gets:
 - Dedicated MariaDB database (named after username)
 - Database user with full privileges on their database
 - Credentials stored in `/sites/DOMAIN/config/.env`
-- Password is base64 encoded in the .env file
+- Password is stored in plain text in the .env file
 
 ### 5. Email Configuration
 
 - MSMTP configuration for outbound email
 - DKIM key generation for email authentication
-- Demo page includes email testing functionality
-- DNS record guidance for SPF, DKIM, and DMARC
+- DKIM key generation and DNS record creation in config/dkim.conf
 
 ## Template System
 
@@ -154,16 +153,16 @@ PHP_UPLOAD_MAX_FILESIZE=64M
 
 ```bash
 # PHP site with HTTPS
-sitemgr --add --https=acme --php=82 example.com
+sitemgr --create --https acme --php 82 example.com
 
 # WordPress site
-sitemgr --add --https=acme --php=82 --wordpress blog.com
+sitemgr --create --https acme --php 82 --wordpress blog.com
 
 # Bun.js site
-sitemgr --add --https=self-signed --bun app.com
+sitemgr --create --https self-signed --bun app.com
 
 # HTTP-only site
-sitemgr --add --https=none --php=83 test.local
+sitemgr --create --https none --php 83 test.local
 ```
 
 ### Site Management
@@ -176,10 +175,10 @@ sitemgr --list
 sitemgr --remove example.com
 
 # Change PHP version
-sitemgr --change-php --php=83 example.com
+sitemgr --change-php example.com 83
 
 # Change HTTPS mode
-sitemgr --change-https --https=acme example.com
+sitemgr --change-https example.com acme
 
 # Generate DKIM keys
 sitemgr --dkim-generate example.com
@@ -293,8 +292,8 @@ Restores write permissions to web root
 ## Database Password Handling
 
 - Generated using `openssl rand -base64 16`
-- Stored base64-encoded in `.env` file
-- Decoded when used in demo page: `base64_decode($_ENV['DB_PASSWORD'])`
+- Stored in plain text in `.env` file
+- Used directly from environment variables
 
 ## WordPress Optimizations
 
@@ -318,7 +317,7 @@ The following commands are defined but not functional:
 1. **Root Password**: MariaDB root password must be in `/root/.mysql_root`
 2. **User Isolation**: Users are isolated through Unix permissions and PHP restrictions
 3. **SSL Certificates**: Stored in `/etc/nginx/ssl/` with appropriate permissions
-4. **Database Passwords**: Base64 encoding is not encryption - use proper secrets management in production
+4. **Database Passwords**: Stored in plain text - use proper secrets management in production
 5. **PHP Security**: open_basedir restricts PHP scripts to site directories only
 
 ## Troubleshooting
