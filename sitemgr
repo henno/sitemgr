@@ -1,0 +1,1200 @@
+#!/bin/bash
+# Site Management Script for Alpine Linux - Refactored Version
+# Version using bash for better shell feature support
+
+# Load defaults
+. /etc/sitemgr/defaults.conf
+
+# Colors for output - only use if terminal supports colors
+if [ -t 1 ] && [ "${TERM:-}" != "dumb" ] && command -v tput >/dev/null 2>&1 && [ "$(tput colors 2>/dev/null || echo 0)" -ge 8 ]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    NC='\033[0m' # No Color
+else
+    RED=''
+    GREEN=''
+    YELLOW=''
+    NC=''
+fi
+
+# Logging functions
+log_info() { echo "${GREEN}[INFO]${NC} $1"; }
+log_warn() { echo "${YELLOW}[WARN]${NC} $1"; }
+log_error() { echo "${RED}[ERROR]${NC} $1" >&2; }
+
+# ============================================================================
+# HELPER FUNCTIONS TO ELIMINATE CODE DUPLICATION
+# ============================================================================
+
+# Generate nginx configuration with proper ownership
+generate_nginx_config() {
+    local template="$1"
+    local domain="$2"
+    local username="$3"
+    local site_type="$4"
+    local php_version="${5:-}"
+    local port="${6:-}"
+
+    local nginx_conf="/sites/$domain/config/nginx.conf"
+
+    if [ "$site_type" = "bun" ]; then
+        # Bun site configuration
+        sed -e "s/{{DOMAIN}}/$domain/g" \
+            -e "s/{{PORT}}/$port/g" \
+            "$template" > "$nginx_conf"
+    else
+        # PHP site configuration
+        sed -e "s/{{DOMAIN}}/$domain/g" \
+            -e "s/{{PHP_VERSION}}/$php_version/g" \
+            "$template" > "$nginx_conf"
+    fi
+
+    # Set proper ownership
+    chown "$username:nginx" "$nginx_conf"
+    chmod 640 "$nginx_conf"
+}
+
+# Create PHP-FPM pool configuration
+create_phpfpm_pool() {
+    local domain="$1"
+    local username="$2"
+    local php_version="$3"
+
+    local pool_file="/etc/php${php_version}/php-fpm.d/${domain}.conf"
+
+    sed -e "s/{{DOMAIN}}/$domain/g" \
+        -e "s/{{USERNAME}}/$username/g" \
+        -e "s/{{PHP_VERSION}}/$php_version/g" \
+        -e "s/{{PHP_FPM_MAX_CHILDREN}}/$PHP_FPM_MAX_CHILDREN/g" \
+        -e "s/{{PHP_FPM_START_SERVERS}}/$PHP_FPM_START_SERVERS/g" \
+        -e "s/{{PHP_FPM_MIN_SPARE}}/$PHP_FPM_MIN_SPARE/g" \
+        -e "s/{{PHP_FPM_MAX_SPARE}}/$PHP_FPM_MAX_SPARE/g" \
+        -e "s/{{PHP_FPM_MAX_REQUESTS}}/$PHP_FPM_MAX_REQUESTS/g" \
+        -e "s/{{PHP_MEMORY_LIMIT}}/$PHP_MEMORY_LIMIT/g" \
+        -e "s/{{PHP_MAX_EXECUTION_TIME}}/$PHP_MAX_EXECUTION_TIME/g" \
+        -e "s/{{PHP_POST_MAX_SIZE}}/$PHP_POST_MAX_SIZE/g" \
+        -e "s/{{PHP_UPLOAD_MAX_FILESIZE}}/$PHP_UPLOAD_MAX_FILESIZE/g" \
+        /etc/sitemgr/templates/php-fpm-pool.conf > "$pool_file"
+
+    # Reload PHP-FPM
+    rc-service "php-fpm${php_version}" reload || rc-service "php-fpm${php_version}" restart
+}
+
+# Create SSL certificate (self-signed or ACME)
+create_ssl_certificate() {
+    local domain="$1"
+    local https_mode="$2"
+    local force="${3:-false}"
+
+    case "$https_mode" in
+        self-signed)
+            mkdir -p /etc/nginx/ssl
+            openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                -keyout "/etc/nginx/ssl/$domain.key" \
+                -out "/etc/nginx/ssl/$domain.crt" \
+                -subj "/C=US/ST=State/L=City/O=Organization/CN=$domain" 2>/dev/null
+            chmod 600 "/etc/nginx/ssl/$domain.key"
+            chmod 644 "/etc/nginx/ssl/$domain.crt"
+            return 0
+            ;;
+
+        acme|acme-test)
+            local staging_flag=""
+            [ "$https_mode" = "acme-test" ] && staging_flag="--staging"
+
+            # Create webroot directory for ACME challenges
+            mkdir -p /var/www/html/.well-known/acme-challenge
+
+            # Add force flag if requested
+            local force_flag=""
+            [ "$force" = "true" ] && force_flag="--force"
+
+            # Use Let's Encrypt as the CA server
+            local server_flag="--server letsencrypt"
+
+            # Request certificate using webroot mode (nginx stays running)
+            if acme.sh --issue -d "$domain" -d "www.$domain" \
+                --webroot /var/www/html \
+                $server_flag $staging_flag $force_flag; then
+
+                # Install certificate
+                mkdir -p /etc/nginx/ssl
+                acme.sh --install-cert -d "$domain" \
+                    --key-file "/etc/nginx/ssl/$domain.key" \
+                    --fullchain-file "/etc/nginx/ssl/$domain.crt" \
+                    --reloadcmd "rc-service nginx reload"
+
+                chmod 600 "/etc/nginx/ssl/$domain.key"
+                chmod 644 "/etc/nginx/ssl/$domain.crt"
+                return 0
+            else
+                # Check if certificates already exist in acme.sh directory
+                local acme_home="$HOME/.acme.sh"
+                if [ -f "$acme_home/$domain/$domain.cer" ] || [ -f "$acme_home/${domain}_ecc/$domain.cer" ]; then
+                    log_info "Existing certificate found, installing to nginx..."
+                    mkdir -p /etc/nginx/ssl
+                    acme.sh --install-cert -d "$domain" \
+                        --key-file "/etc/nginx/ssl/$domain.key" \
+                        --fullchain-file "/etc/nginx/ssl/$domain.crt" \
+                        --reloadcmd "rc-service nginx reload"
+
+                    chmod 600 "/etc/nginx/ssl/$domain.key"
+                    chmod 644 "/etc/nginx/ssl/$domain.crt"
+                    return 0
+                fi
+                return 1
+            fi
+            ;;
+
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# Set directory permissions according to our security model
+set_site_permissions() {
+    local domain="$1"
+    local username="$2"
+
+    # Home directory - user:nginx so nginx can traverse, others cannot
+    chown "$username:nginx" "/sites/$domain"
+    chmod 750 "/sites/$domain"
+
+    # Web directories - user:nginx for shared access
+    if [ -d "/sites/$domain/htdocs" ]; then
+        chown -R "$username:nginx" "/sites/$domain/htdocs"
+        chmod 750 "/sites/$domain/htdocs"
+    fi
+
+    if [ -d "/sites/$domain/app" ]; then
+        chown -R "$username:nginx" "/sites/$domain/app"
+        chmod 750 "/sites/$domain/app"
+    fi
+
+    # Config directory - user:nginx since nginx reads nginx.conf symlink
+    chown -R "$username:nginx" "/sites/$domain/config"
+    chmod 750 "/sites/$domain/config"
+
+    # Set individual config file permissions
+    [ -f "/sites/$domain/config/.env" ] && chmod 600 "/sites/$domain/config/.env"
+    [ -f "/sites/$domain/config/msmtprc" ] && chmod 600 "/sites/$domain/config/msmtprc"
+    [ -f "/sites/$domain/config/dkim.key" ] && chmod 600 "/sites/$domain/config/dkim.key"
+    [ -f "/sites/$domain/config/dkim.pub" ] && chmod 644 "/sites/$domain/config/dkim.pub"
+    [ -f "/sites/$domain/config/nginx.conf" ] && chmod 640 "/sites/$domain/config/nginx.conf"
+
+    # Logs - separate nginx and PHP logs for security
+    chown "$username:nginx" "/sites/$domain/logs"
+    chmod 750 "/sites/$domain/logs"
+
+    # Nginx logs - nginx owns, user can only read (tamper-proof)
+    chown -R "nginx:$username" "/sites/$domain/logs/nginx"
+    chmod 750 "/sites/$domain/logs/nginx"
+
+    # PHP logs - user owns completely
+    chown -R "$username:$username" "/sites/$domain/logs/php"
+    chmod 750 "/sites/$domain/logs/php"
+
+    # Private directories - user only
+    chown -R "$username:$username" "/sites/$domain/tmp"
+    chmod 700 "/sites/$domain/tmp"
+
+    chown -R "$username:$username" "/sites/$domain/.ssh"
+    chmod 700 "/sites/$domain/.ssh"
+    [ -f "/sites/$domain/.ssh/authorized_keys" ] && chmod 600 "/sites/$domain/.ssh/authorized_keys"
+
+    # User config directories
+    if [ -d "/sites/$domain/.config" ]; then
+        chown -R "$username:$username" "/sites/$domain/.config"
+    fi
+
+    if [ -d "/sites/$domain/.local" ]; then
+        chown -R "$username:$username" "/sites/$domain/.local"
+    fi
+
+    if [ -d "/sites/$domain/.npm-global" ]; then
+        chown -R "$username:$username" "/sites/$domain/.npm-global"
+    fi
+
+    if [ -d "/sites/$domain/.npm" ]; then
+        chown -R "$username:$username" "/sites/$domain/.npm"
+    fi
+
+    if [ -f "/sites/$domain/.npmrc" ]; then
+        chown "$username:$username" "/sites/$domain/.npmrc"
+        chmod 644 "/sites/$domain/.npmrc"
+    fi
+
+    # Site management scripts
+    if [ -f "/sites/$domain/site-readonly" ]; then
+        chown "$username:$username" "/sites/$domain/site-readonly"
+        chmod 755 "/sites/$domain/site-readonly"
+    fi
+
+    if [ -f "/sites/$domain/site-writable" ]; then
+        chown "$username:$username" "/sites/$domain/site-writable"
+        chmod 755 "/sites/$domain/site-writable"
+    fi
+}
+
+# Create symlink for nginx configuration
+create_nginx_symlink() {
+    local domain="$1"
+    ln -sf "/sites/$domain/config/nginx.conf" "/etc/nginx/conf.d/$domain.conf"
+}
+
+# Configure nginx with appropriate template
+configure_nginx() {
+    local domain="$1"
+    local username="$2"
+    local site_type="$3"
+    local php_version="${4:-}"
+    local port="${5:-}"
+    local https_mode="${6:-none}"
+
+    # Determine template based on site type and HTTPS mode
+    local template=""
+    if [ "$site_type" = "bun" ]; then
+        if [ "$https_mode" = "none" ]; then
+            template="/etc/sitemgr/templates/nginx-bun-http.conf"
+        else
+            template="/etc/sitemgr/templates/nginx-bun-https.conf"
+        fi
+    else
+        if [ "$https_mode" = "none" ]; then
+            template="/etc/sitemgr/templates/nginx-php-http.conf"
+        else
+            template="/etc/sitemgr/templates/nginx-php.conf"
+        fi
+    fi
+
+    # Generate nginx config
+    generate_nginx_config "$template" "$domain" "$username" "$site_type" "$php_version" "$port"
+
+    # Create symlink
+    create_nginx_symlink "$domain"
+}
+
+# ============================================================================
+# ORIGINAL FUNCTIONS (keeping the core logic)
+# ============================================================================
+
+# Function to validate domain
+validate_domain() {
+    domain=$1
+    case "$domain" in
+        *[!a-zA-Z0-9.-]*)
+            log_error "Invalid domain format: $domain"
+            return 1
+            ;;
+        .* | *. | *..* | "")
+            log_error "Invalid domain format: $domain"
+            return 1
+            ;;
+    esac
+    return 0
+}
+
+# Function to get next available port
+get_next_port() {
+    port_file="/var/sitemgr/port_allocations"
+    last_port=$(tail -1 "$port_file" 2>/dev/null | awk '{print $2}')
+
+    # If no port found or port is not numeric, start from 3000
+    if [ -z "$last_port" ] || ! [ "$last_port" -eq "$last_port" ] 2>/dev/null; then
+        echo 3001
+    else
+        echo $((last_port + 1))
+    fi
+}
+
+# Function to check if site exists
+site_exists() {
+    [ -d "/sites/$1" ]
+}
+
+# Function to get DB root password
+get_db_root_password() {
+    if [ -f /root/.mysql_root ]; then
+        # Check if file contains just the password or the old format
+        if grep -q "DB_ROOT_PASS=" /root/.mysql_root; then
+            # Old format: source the file
+            . /root/.mysql_root
+            echo "$DB_ROOT_PASS"
+        else
+            # New format: file contains just the password
+            cat /root/.mysql_root | tr -d '\n'
+        fi
+    else
+        log_error "MariaDB root password not found"
+        exit 1
+    fi
+}
+
+# Function to get available PHP versions
+get_available_php_versions() {
+    apk search php 2>/dev/null | grep "^php[0-9][0-9]-[0-9]" | sed 's/^php\([0-9][0-9]\)-.*/\1/' | sort -u | tr '\n' '|' | sed 's/|$//'
+}
+
+# Function to get available HTTPS modes
+get_available_https_modes() {
+    echo "none|self-signed|acme|acme-test"
+}
+
+# Create site-readonly and site-writable scripts
+create_site_scripts() {
+    local domain="$1"
+
+    cat > "/sites/$domain/site-readonly" << 'EOCMD'
+#!/bin/sh
+# Set site to read-only mode (production)
+DOMAIN=$(basename $(pwd))
+if [ -d "/sites/$DOMAIN/htdocs" ]; then
+    WEB_ROOT="/sites/$DOMAIN/htdocs"
+elif [ -d "/sites/$DOMAIN/app" ]; then
+    WEB_ROOT="/sites/$DOMAIN/app"
+else
+    echo "Error: No web root directory found"
+    exit 1
+fi
+chmod -R 555 "$WEB_ROOT" 2>/dev/null || true
+# Apply exceptions from readwritedirectories.txt
+if [ -f "/sites/$DOMAIN/config/readwritedirectories.txt" ]; then
+    while IFS= read -r dir; do
+        if [ -n "$dir" ] && [ -d "$WEB_ROOT/$dir" ]; then
+            chmod -R 755 "$WEB_ROOT/$dir" 2>/dev/null || true
+        fi
+    done < "/sites/$DOMAIN/config/readwritedirectories.txt"
+    echo "Site is now read-only (except directories in config/readwritedirectories.txt)"
+else
+    echo "Site is now read-only"
+fi
+EOCMD
+    chmod +x "/sites/$domain/site-readonly"
+
+    cat > "/sites/$domain/site-writable" << 'EOCMD'
+#!/bin/sh
+# Enable write mode for site updates
+DOMAIN=$(basename $(pwd))
+if [ -d "/sites/$DOMAIN/htdocs" ]; then
+    WEB_ROOT="/sites/$DOMAIN/htdocs"
+elif [ -d "/sites/$DOMAIN/app" ]; then
+    WEB_ROOT="/sites/$DOMAIN/app"
+else
+    echo "Error: No web root directory found"
+    exit 1
+fi
+chmod -R 755 "$WEB_ROOT" 2>/dev/null || true
+echo "Site is now writable for updates"
+echo "Remember to run 'site-readonly' when done!"
+EOCMD
+    chmod +x "/sites/$domain/site-writable"
+}
+
+# Create database and return password
+create_database() {
+    local domain="$1"
+    local username="$2"
+
+    local db_password=$(tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c16)
+    local db_root_pass=$(get_db_root_password)
+
+    mariadb -u root -p"$db_root_pass" << EOSQL 2>/dev/null || true
+CREATE DATABASE IF NOT EXISTS \`$username\`;
+CREATE USER IF NOT EXISTS '$username'@'localhost' IDENTIFIED BY '$db_password';
+GRANT ALL PRIVILEGES ON \`$username\`.* TO '$username'@'localhost';
+FLUSH PRIVILEGES;
+EOSQL
+
+    echo "$db_password"
+}
+
+# Generate DKIM keys
+generate_dkim_keys() {
+    local domain="$1"
+
+    log_info "Generating DKIM keys for $domain..."
+    openssl genrsa -out "/sites/$domain/config/dkim.key" 2048 2>/dev/null
+    openssl rsa -in "/sites/$domain/config/dkim.key" -pubout -out "/sites/$domain/config/dkim.pub" 2>/dev/null
+
+    # Generate DKIM DNS record
+    echo "default._domainkey IN TXT \"v=DKIM1; k=rsa; p=$(openssl rsa -in /sites/$domain/config/dkim.key -pubout 2>/dev/null | grep -v '^-----' | tr -d '\n')\"" > "/sites/$domain/config/dkim.conf"
+}
+
+# Create environment and config files
+create_config_files() {
+    local domain="$1"
+    local username="$2"
+    local db_password="$3"
+
+    # Create .env file
+    cat > "/sites/$domain/config/.env" << EOENV
+DOMAIN=$domain
+DB_HOST=localhost
+DB_DATABASE=$username
+DB_USERNAME=$username
+DB_PASSWORD=$db_password
+DB_PREFIX=wp_
+WP_HOME=https://$domain
+WP_SITEURL=https://$domain
+EOENV
+
+    # Create msmtprc
+    cat > "/sites/$domain/config/msmtprc" << EOMSMTP
+account default
+host localhost
+port 25
+from $username@$domain
+user $username@$domain
+password $db_password
+auth off
+tls off
+tls_trust_file /etc/ssl/certs/ca-certificates.crt
+syslog on
+EOMSMTP
+}
+
+# Setup SSH access
+setup_ssh_access() {
+    local domain="$1"
+    local username="$2"
+
+    mkdir -p "/sites/$domain/.ssh"
+    if [ -f ~/.ssh/id_ed25519.pub ]; then
+        cp ~/.ssh/id_ed25519.pub "/sites/$domain/.ssh/authorized_keys"
+        log_info "Added default SSH key (~/.ssh/id_ed25519.pub) for $username"
+    else
+        touch "/sites/$domain/.ssh/authorized_keys"
+        log_info "Created empty authorized_keys file for $username"
+    fi
+}
+
+# Configure SSH in sshd_config
+configure_ssh_access() {
+    local domain="$1"
+    local username="$2"
+
+    # No special SSH configuration needed - users have normal shell access
+    # Just reload SSH to ensure it picks up the new user
+    rc-service sshd reload
+}
+
+# Remove SSH configuration
+remove_ssh_config() {
+    local username="$1"
+
+    # Remove any old SSH config if it exists (for backward compatibility)
+    sed -i "/^Match User $username$/,/^$/d" /etc/ssh/sshd_config 2>/dev/null || true
+    rc-service sshd reload
+}
+
+# Setup Bun site
+setup_bun_site() {
+    local domain="$1"
+    local username="$2"
+    local db_password="$3"
+    local port="$4"
+
+    # Install Bun for this specific user
+    log_info "Installing Bun for user $username..."
+
+    mkdir -p "/sites/$domain/.bun"
+
+    if [ -f "/root/sitemgr/bun.sh_install" ]; then
+        su - "$username" -s /bin/sh -c "BUN_INSTALL=/sites/$domain/.bun bash /root/sitemgr/bun.sh_install" >/dev/null 2>&1 || {
+            BUN_INSTALL="/sites/$domain/.bun" bash /root/sitemgr/bun.sh_install >/dev/null 2>&1
+            chown -R "$username:$username" "/sites/$domain/.bun"
+        }
+
+        ln -sf "/sites/$domain/.bun/bin/bun" "/sites/$domain/bun"
+        log_info "Bun installed for $username at /sites/$domain/.bun/bin/bun"
+    else
+        log_error "Bun install script not found at /root/sitemgr/bun.sh_install"
+        log_error "Please download: curl -fsSL https://bun.sh/install > /root/sitemgr/bun.sh_install"
+        return 1
+    fi
+
+    # Create PM2 ecosystem file
+    sed -e "s/{{DOMAIN}}/$domain/g" \
+        -e "s/{{USERNAME}}/$username/g" \
+        -e "s/{{PORT}}/$port/g" \
+        -e "s/{{DB_PASSWORD}}/$db_password/g" \
+        -e "s/{{SCRIPT}}/index.js/g" \
+        /etc/sitemgr/templates/pm2-ecosystem.config.js > "/sites/$domain/ecosystem.config.js"
+
+    # Create sample Bun app
+    cat > "/sites/$domain/app/index.js" << EOAPP
+console.log("Bun app for $domain running on port $port");
+
+Bun.serve({
+    port: process.env.PORT || $port,
+    fetch(req) {
+        return new Response("Welcome to $domain - Powered by Bun!");
+    },
+});
+EOAPP
+}
+
+# Setup PHP site
+setup_php_site() {
+    local domain="$1"
+    local username="$2"
+    local php_version="$3"
+
+    # Create default PHP file
+    cat > "/sites/$domain/htdocs/index.php" << 'EOPHP'
+<?php
+// Load .env file
+$env = __DIR__ . '/../config/.env';
+if (file_exists($env)) {
+    foreach (file($env, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        if (strpos(trim($line), '#') !== 0 && strpos($line, '=') !== false) {
+            list($k, $v) = explode('=', $line, 2);
+            $_ENV[trim($k)] = trim($v);
+        }
+    }
+}
+
+// Test database
+$db_status = 'Not tested';
+try {
+    if (isset($_ENV['DB_HOST']) && isset($_ENV['DB_DATABASE'])) {
+        $pdo = new PDO(
+            "mysql:host={$_ENV['DB_HOST']};dbname={$_ENV['DB_DATABASE']}",
+            $_ENV['DB_USERNAME'],
+            $_ENV['DB_PASSWORD']
+        );
+        $db_status = 'Connected';
+    }
+} catch (Exception $e) {
+    $db_status = 'Failed: ' . $e->getMessage();
+}
+
+echo "Site: {$_ENV['DOMAIN']}<br>\n";
+echo "PHP: " . phpversion() . "<br>\n";
+echo "Database: $db_status<br>\n";
+echo "User: {$_ENV['DB_USERNAME']}<br>\n";
+echo "Path: " . __DIR__ . "<br>\n";
+?>
+EOPHP
+
+    # Create PHP-FPM pool
+    create_phpfpm_pool "$domain" "$username" "$php_version"
+}
+
+# Setup Fish shell configuration
+setup_fish_config() {
+    local domain="$1"
+    local site_type="$2"
+
+    cat > "/sites/$domain/.config/fish/config.fish" << EOFISH
+# Set HOME environment
+set -gx HOME /sites/$domain
+
+# Configure npm to install global packages in user home
+set -gx NPM_CONFIG_PREFIX /sites/$domain/.npm-global
+set -gx PATH /sites/$domain/.npm-global/bin \$PATH
+
+# Welcome message
+echo "==============================================="
+echo "Welcome to $domain"
+echo "==============================================="
+echo ""
+echo "Directories:"
+if test -d /sites/$domain/htdocs
+    echo "  /sites/$domain/htdocs/ - Your website files"
+else if test -d /sites/$domain/app
+    echo "  /sites/$domain/app/ - Your Bun application"
+end
+echo "  /sites/$domain/config/ - Configuration files (db, email, writable dirs)"
+echo "  /sites/$domain/logs/ - Log files"
+echo "  /sites/$domain/tmp/ - Temporary files"
+echo ""
+echo "Commands:"
+echo "  site-readonly - Set site to read-only mode (production)"
+echo "  site-writable - Enable write mode for updates"
+echo ""
+EOFISH
+}
+
+# Create system user
+create_system_user() {
+    local domain="$1"
+    local username="$2"
+
+    getent group nginx >/dev/null || addgroup nginx
+    adduser -D -s /usr/bin/fish -h "/sites/$domain" "$username" 2>/dev/null || true
+    addgroup "$username" nginx 2>/dev/null || true
+    passwd -d "$username" >/dev/null 2>&1
+}
+
+# Create site directories
+create_site_directories() {
+    local domain="$1"
+    local site_type="$2"
+
+    mkdir -p "/sites/$domain"/{config,logs,tmp}
+    mkdir -p "/sites/$domain/logs"/{nginx,php}
+
+    if [ "$site_type" = "bun" ]; then
+        mkdir -p "/sites/$domain/app"
+    else
+        mkdir -p "/sites/$domain/htdocs"
+    fi
+
+    # Create user directories
+    mkdir -p "/sites/$domain/.ssh"
+    mkdir -p "/sites/$domain/.config/fish"
+    mkdir -p "/sites/$domain/.local/share"
+    mkdir -p "/sites/$domain/.npm-global"
+
+    # Create npmrc file
+    echo "prefix=/sites/$domain/.npm-global" > "/sites/$domain/.npmrc"
+}
+
+# ============================================================================
+# MAIN FUNCTIONS
+# ============================================================================
+
+# Create a new site
+create_site() {
+    local domain="$1"
+    local username="$2"
+    local php_version="${3:-$DEFAULT_PHP_VERSION}"
+    local https_mode="${4:-$DEFAULT_HTTPS_MODE}"
+    local site_type="${5:-php}"
+    local is_wordpress="${6:-false}"
+
+    # Validate inputs
+    validate_domain "$domain" || return 1
+
+    if site_exists "$domain"; then
+        log_error "Site $domain already exists"
+        return 1
+    fi
+
+    log_info "Creating site: $domain"
+    log_info "Type: $site_type"
+    [ "$site_type" = "php" ] && log_info "PHP Version: $php_version"
+    log_info "HTTPS Mode: $https_mode"
+
+    # Create directories
+    create_site_directories "$domain" "$site_type"
+
+    # Create system user
+    create_system_user "$domain" "$username"
+
+    # Generate DKIM keys
+    generate_dkim_keys "$domain"
+
+    # Create database
+    local db_password=$(create_database "$domain" "$username")
+
+    # Create configuration files
+    create_config_files "$domain" "$username" "$db_password"
+
+    # Create site management scripts
+    create_site_scripts "$domain"
+
+    # Setup SSH access
+    setup_ssh_access "$domain" "$username"
+
+    # Setup site-specific services
+    local port=""
+    if [ "$site_type" = "bun" ]; then
+        port=$(get_next_port)
+        echo "$domain $port" >> /var/sitemgr/port_allocations
+        setup_bun_site "$domain" "$username" "$db_password" "$port"
+    else
+        setup_php_site "$domain" "$username" "$php_version"
+    fi
+
+    # Setup Fish shell config
+    setup_fish_config "$domain" "$site_type"
+
+    # Configure nginx based on HTTPS mode
+    configure_nginx "$domain" "$username" "$site_type" "$php_version" "$port" "$https_mode"
+
+    # Handle SSL certificates
+    if [ "$https_mode" != "none" ]; then
+        if ! create_ssl_certificate "$domain" "$https_mode"; then
+            log_error "Failed to create SSL certificate, falling back to HTTP"
+            https_mode="none"
+            configure_nginx "$domain" "$username" "$site_type" "$php_version" "$port" "$https_mode"
+        fi
+    fi
+
+    # Set all permissions at once
+    set_site_permissions "$domain" "$username"
+
+    # Configure SSH access
+    configure_ssh_access "$domain" "$username"
+
+    # Add to hosts file
+    echo "127.0.0.1 $domain" >> /etc/hosts
+
+    # Test nginx config before reload
+    nginx -t && rc-service nginx reload
+
+    # Reload PHP-FPM if needed
+    if [ "$site_type" = "php" ]; then
+        rc-service "php-fpm$php_version" reload 2>/dev/null || rc-service "php-fpm$php_version" restart
+    fi
+
+    log_info "Site $domain created successfully!"
+    log_info "Database Password: $db_password"
+    log_info "SSH: ssh $username@$domain"
+    [ "$site_type" = "bun" ] && log_info "Bun app port: $port"
+
+    # Test the site with curl
+    log_info "Testing site connectivity..."
+    sleep 2  # Give services a moment to fully start
+
+    # Determine curl flags based on HTTPS mode
+    local curl_flags="-s -o /dev/null -w '%{http_code} -> %{url_effective}\n' -L --max-redirs 3"
+    if [ "$https_mode" = "self-signed" ] || [ "$https_mode" = "acme-test" ]; then
+        curl_flags="-k $curl_flags"  # Skip certificate verification for self-signed/test certs
+    fi
+
+    # Always test with HTTP to verify redirects work
+    log_info "Test result: $(eval curl $curl_flags http://$domain)"
+
+    # Also test the actual content
+    local response
+    if [ "$https_mode" = "self-signed" ] || [ "$https_mode" = "acme-test" ]; then
+        response=$(curl -sk -L --max-redirs 3 "http://$domain" 2>/dev/null | head -1)
+    else
+        response=$(curl -s -L --max-redirs 3 "http://$domain" 2>/dev/null | head -1)
+    fi
+
+    if [ "$site_type" = "bun" ]; then
+        if echo "$response" | grep -q "Welcome to $domain"; then
+            log_info "✓ Bun app is responding correctly"
+        else
+            log_warn "⚠ Bun app may not be responding correctly"
+        fi
+    else
+        if echo "$response" | grep -q "Site: $domain"; then
+            log_info "✓ PHP site is responding correctly"
+        else
+            log_warn "⚠ PHP site may not be responding correctly"
+        fi
+    fi
+}
+
+# Remove a site
+remove_site() {
+    local domain="$1"
+    local force="${2:-false}"
+
+    if ! site_exists "$domain"; then
+        log_error "Site $domain does not exist"
+        return 1
+    fi
+
+    local username=$(stat -c %U "/sites/$domain" 2>/dev/null || echo "")
+
+    if [ "$force" != "true" ]; then
+        echo "This will permanently delete:"
+        echo "  - Site directory: /sites/$domain"
+        echo "  - Database: $username"
+        echo "  - System user: $username"
+        echo "  - Nginx configuration"
+        echo "  - PHP-FPM pool (if applicable)"
+        echo ""
+        echo -n "Are you sure? (yes/no): "
+        read confirmation
+        if [ "$confirmation" != "yes" ]; then
+            log_info "Removal cancelled"
+            return 0
+        fi
+    fi
+
+    log_info "Removing site: $domain"
+
+    # Stop PM2 app if Bun site
+    if [ -f "/sites/$domain/ecosystem.config.js" ]; then
+        su - "$username" -c "cd /sites/$domain && pm2 delete ecosystem.config.js" 2>/dev/null || true
+        su - "$username" -c "pm2 save" 2>/dev/null || true
+    fi
+
+    # Remove from port allocations
+    sed -i "/^$domain /d" /var/sitemgr/port_allocations 2>/dev/null || true
+
+    # Remove PHP-FPM pool
+    rm -f /etc/php*/php-fpm.d/${domain}.conf 2>/dev/null
+    for php_version in 81 82 83 84; do
+        rc-service "php-fpm$php_version" reload 2>/dev/null || true
+    done
+
+    # Remove nginx config
+    rm -f "/etc/nginx/conf.d/${domain}.conf"
+    nginx -t && rc-service nginx reload
+
+    # Remove from hosts file
+    sed -i "/127\.0\.0\.1.*$domain/d" /etc/hosts
+
+    # Remove SSH config
+    remove_ssh_config "$username"
+
+    # Remove database
+    local db_root_pass=$(get_db_root_password)
+    mariadb -u root -p"$db_root_pass" << EOSQL 2>/dev/null || true
+DROP DATABASE IF EXISTS \`$username\`;
+DROP USER IF EXISTS '$username'@'localhost';
+FLUSH PRIVILEGES;
+EOSQL
+
+    # Kill all user processes
+    pkill -u "$username" 2>/dev/null || true
+    sleep 1
+    pkill -9 -u "$username" 2>/dev/null || true
+
+    # Remove user
+    deluser "$username" 2>/dev/null || true
+    delgroup "$username" 2>/dev/null || true
+
+    # Remove site directory
+    rm -rf "/sites/$domain"
+
+    log_info "Site $domain removed successfully"
+}
+
+# Change PHP version for a site
+change_php() {
+    local domain="$1"
+    local new_php_version="$2"
+
+    if ! site_exists "$domain"; then
+        log_error "Site $domain does not exist"
+        return 1
+    fi
+
+    # Check if it's a PHP site
+    if [ ! -d "/sites/$domain/htdocs" ]; then
+        log_error "$domain is not a PHP site"
+        return 1
+    fi
+
+    local username=$(stat -c %U "/sites/$domain" 2>/dev/null)
+    local old_php_version=""
+
+    # Find current PHP version
+    for php_ver in 81 82 83 84; do
+        if [ -f "/etc/php$php_ver/php-fpm.d/${domain}.conf" ]; then
+            old_php_version="$php_ver"
+            break
+        fi
+    done
+
+    if [ "$old_php_version" = "$new_php_version" ]; then
+        log_info "Site $domain is already using PHP $new_php_version"
+        return 0
+    fi
+
+    log_info "Changing PHP version for $domain from $old_php_version to $new_php_version"
+
+    # Remove old PHP-FPM pool
+    rm -f "/etc/php$old_php_version/php-fpm.d/${domain}.conf"
+    rc-service "php-fpm$old_php_version" reload 2>/dev/null || true
+
+    # Create new PHP-FPM pool
+    create_phpfpm_pool "$domain" "$username" "$new_php_version"
+
+    # Update nginx config
+    local template=""
+    local https_mode="none"
+    if grep -q "ssl_certificate" "/sites/$domain/config/nginx.conf" 2>/dev/null; then
+        https_mode="https"
+        template="/etc/sitemgr/templates/nginx-php.conf"
+    else
+        template="/etc/sitemgr/templates/nginx-php-http.conf"
+    fi
+
+    generate_nginx_config "$template" "$domain" "$username" "php" "$new_php_version"
+    create_nginx_symlink "$domain"
+
+    # Reload services
+    nginx -t && rc-service nginx reload
+    rc-service "php-fpm$new_php_version" reload 2>/dev/null || rc-service "php-fpm$new_php_version" restart
+
+    log_info "PHP version changed successfully to $new_php_version"
+}
+
+# Change HTTPS mode for a site
+change_https() {
+    local domain="$1"
+    local new_https_mode="$2"
+    local force="${3:-false}"
+
+    if ! site_exists "$domain"; then
+        log_error "Site $domain does not exist"
+        return 1
+    fi
+
+    local username=$(stat -c %U "/sites/$domain" 2>/dev/null)
+    local site_type="php"
+    local php_version=""
+    local port=""
+
+    # Determine site type
+    if [ -d "/sites/$domain/app" ]; then
+        site_type="bun"
+        port=$(grep "$domain" /var/sitemgr/port_allocations 2>/dev/null | awk '{print $2}')
+    else
+        # Find current PHP version
+        for php_ver in 81 82 83 84; do
+            if [ -f "/etc/php$php_ver/php-fpm.d/${domain}.conf" ]; then
+                php_version="$php_ver"
+                break
+            fi
+        done
+    fi
+
+    log_info "Changing HTTPS mode for $domain to $new_https_mode"
+
+    # Handle SSL certificates
+    if [ "$new_https_mode" != "none" ]; then
+        if ! create_ssl_certificate "$domain" "$new_https_mode" "$force"; then
+            log_error "Failed to create SSL certificate"
+            return 1
+        fi
+    fi
+
+    # Update nginx config
+    configure_nginx "$domain" "$username" "$site_type" "$php_version" "$port" "$new_https_mode"
+
+    # Reload nginx
+    nginx -t && rc-service nginx reload
+
+    log_info "HTTPS mode changed successfully to $new_https_mode"
+}
+
+# List all sites
+list_sites() {
+    if [ ! -d /sites ] || [ -z "$(ls -A /sites 2>/dev/null)" ]; then
+        echo "No sites configured"
+        return 0
+    fi
+
+    echo "Configured sites:"
+    echo "================="
+
+    for site_dir in /sites/*/; do
+        [ ! -d "$site_dir" ] && continue
+
+        domain=$(basename "$site_dir")
+        username=$(stat -c %U "$site_dir" 2>/dev/null || echo "unknown")
+        site_type="PHP"
+        php_version="-"
+        port="-"
+        https_mode="HTTP"
+
+        # Check site type
+        if [ -d "$site_dir/app" ]; then
+            site_type="Bun"
+            port=$(grep "$domain" /var/sitemgr/port_allocations 2>/dev/null | awk '{print $2}' || echo "-")
+        else
+            # Find PHP version
+            for php_ver in 81 82 83 84; do
+                if [ -f "/etc/php$php_ver/php-fpm.d/${domain}.conf" ]; then
+                    php_version="$php_ver"
+                    break
+                fi
+            done
+        fi
+
+        # Check HTTPS mode
+        if [ -f "/etc/nginx/ssl/${domain}.crt" ]; then
+            if grep -q "acme" "/sites/$domain/config/nginx.conf" 2>/dev/null; then
+                https_mode="ACME"
+            else
+                https_mode="Self-signed"
+            fi
+        fi
+
+        echo "Domain: $domain"
+        echo "  User: $username"
+        echo "  Type: $site_type"
+        if [ "$site_type" = "PHP" ]; then
+            echo "  PHP Version: $php_version"
+        else
+            echo "  Port: $port"
+        fi
+        echo "  HTTPS: $https_mode"
+        echo ""
+    done
+}
+
+# Show usage information
+show_usage() {
+    cat << EOF
+Site Management Tool for Alpine Linux
+
+Usage: $(basename $0) [COMMAND] [OPTIONS]
+
+Commands:
+    --create DOMAIN [OPTIONS]     Create a new site
+    --destroy DOMAIN             Destroy/remove a site
+    --remove DOMAIN              Destroy/remove a site (alias for --destroy)
+    --list                       List all sites
+    --change-php DOMAIN VERSION  Change PHP version for a site
+    --change-https DOMAIN MODE [--force]  Change HTTPS mode for a site
+
+Create Options:
+    --user USERNAME             System username (default: domain-based)
+    --php VERSION               PHP version (81, 82, 83, 84) (default: $DEFAULT_PHP_VERSION)
+    --https MODE                HTTPS mode (none, self-signed, acme, acme-test) (default: $DEFAULT_HTTPS_MODE)
+    --type TYPE                 Site type (php, bun) (default: php)
+    --wordpress                 Install WordPress
+
+Examples:
+    $(basename $0) --create example.com
+    $(basename $0) --create example.com --php 84 --https acme
+    $(basename $0) --create api.example.com --type bun
+    $(basename $0) --destroy example.com
+    $(basename $0) --change-php example.com 84
+    $(basename $0) --change-https example.com acme
+
+Available PHP versions: $(get_available_php_versions)
+Available HTTPS modes: $(get_available_https_modes)
+EOF
+}
+
+# ============================================================================
+# MAIN SCRIPT
+# ============================================================================
+
+# Parse command line arguments
+COMMAND=""
+DOMAIN=""
+USERNAME=""
+PHP_VERSION="$DEFAULT_PHP_VERSION"
+HTTPS_MODE="$DEFAULT_HTTPS_MODE"
+SITE_TYPE="php"
+IS_WORDPRESS="false"
+FORCE="false"
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --create)
+            COMMAND="create"
+            DOMAIN="$2"
+            shift 2
+            ;;
+        --destroy|--remove)
+            COMMAND="remove"
+            DOMAIN="$2"
+            shift 2
+            ;;
+        --list)
+            COMMAND="list"
+            shift
+            ;;
+        --change-php)
+            COMMAND="change-php"
+            DOMAIN="$2"
+            PHP_VERSION="$3"
+            shift 3
+            ;;
+        --change-https)
+            COMMAND="change-https"
+            DOMAIN="$2"
+            HTTPS_MODE="$3"
+            shift 3
+            # Check for --force flag
+            if [ "$1" = "--force" ]; then
+                FORCE="true"
+                shift
+            fi
+            ;;
+        --user)
+            USERNAME="$2"
+            shift 2
+            ;;
+        --php)
+            PHP_VERSION="$2"
+            shift 2
+            ;;
+        --https)
+            HTTPS_MODE="$2"
+            shift 2
+            ;;
+        --type)
+            SITE_TYPE="$2"
+            shift 2
+            ;;
+        --wordpress)
+            IS_WORDPRESS="true"
+            shift
+            ;;
+        --force)
+            FORCE="true"
+            shift
+            ;;
+        --help|-h)
+            show_usage
+            exit 0
+            ;;
+        *)
+            log_error "Unknown option: $1"
+            show_usage
+            exit 1
+            ;;
+    esac
+done
+
+# Execute command
+case "$COMMAND" in
+    create)
+        if [ -z "$DOMAIN" ]; then
+            log_error "Domain is required"
+            show_usage
+            exit 1
+        fi
+
+        # Generate username if not provided
+        if [ -z "$USERNAME" ]; then
+            USERNAME=$(echo "$DOMAIN" | sed 's/\.//g' | cut -c1-32)
+        fi
+
+        create_site "$DOMAIN" "$USERNAME" "$PHP_VERSION" "$HTTPS_MODE" "$SITE_TYPE" "$IS_WORDPRESS"
+        ;;
+
+    remove)
+        if [ -z "$DOMAIN" ]; then
+            log_error "Domain is required"
+            show_usage
+            exit 1
+        fi
+        remove_site "$DOMAIN" "$FORCE"
+        ;;
+
+    list)
+        list_sites
+        ;;
+
+    change-php)
+        if [ -z "$DOMAIN" ] || [ -z "$PHP_VERSION" ]; then
+            log_error "Domain and PHP version are required"
+            show_usage
+            exit 1
+        fi
+        change_php "$DOMAIN" "$PHP_VERSION"
+        ;;
+
+    change-https)
+        if [ -z "$DOMAIN" ] || [ -z "$HTTPS_MODE" ]; then
+            log_error "Domain and HTTPS mode are required"
+            show_usage
+            exit 1
+        fi
+        change_https "$DOMAIN" "$HTTPS_MODE" "$FORCE"
+        ;;
+
+    *)
+        show_usage
+        exit 0
+        ;;
+esac
