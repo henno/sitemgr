@@ -1,0 +1,29 @@
+#!/sbin/openrc-run
+
+description="Bun application for {{DOMAIN}}"
+pidfile="/run/bun-{{DOMAIN}}.pid"
+command="/sites/{{DOMAIN}}/.bun/bin/bun"
+command_args="run {{ENTRYPOINT}}"
+command_user="{{USERNAME}}:{{USERNAME}}"
+command_background=true
+directory="/sites/{{DOMAIN}}/app"
+output_log="/sites/{{DOMAIN}}/logs/bun.log"
+error_log="/sites/{{DOMAIN}}/logs/bun-error.log"
+
+start_pre() {
+    checkpath -d -o {{USERNAME}}:{{USERNAME}} -m 0755 /sites/{{DOMAIN}}/logs
+    checkpath -f -o {{USERNAME}}:{{USERNAME}} -m 0644 ${output_log}
+    checkpath -f -o {{USERNAME}}:{{USERNAME}} -m 0644 ${error_log}
+}
+
+depend() {
+    need net
+}
+
+# Environment variables
+export PORT={{PORT}}
+export NODE_ENV=production
+export DB_HOST=localhost
+export DB_USERNAME={{USERNAME}}
+export DB_PASSWORD={{DB_PASSWORD}}
+export DB_DATABASE={{USERNAME}}
