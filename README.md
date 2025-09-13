@@ -153,16 +153,16 @@ PHP_UPLOAD_MAX_FILESIZE=64M
 
 ```bash
 # PHP site with HTTPS
-sitemgr --create --https acme --php 82 example.com
+sitemgr --create example.com --https acme --php 82
 
 # WordPress site
-sitemgr --create --https acme --php 82 --wordpress blog.com
+sitemgr --create blog.com --https acme --php 82 --wordpress
 
 # Bun.js site
-sitemgr --create --https self-signed --bun app.com
+sitemgr --create app.com --https self-signed --type bun
 
 # HTTP-only site
-sitemgr --create --https none --php 83 test.local
+sitemgr --create test.local --https none --php 83
 ```
 
 ### Site Management
@@ -204,9 +204,9 @@ fi
 ```
 
 This ensures:
-- `--https=none` uses HTTP-only templates
-- `--https=acme` and `--https=acme-test` start with HTTP for certificate validation
-- `--https=self-signed` uses HTTPS templates with the self-signed certificate
+- `--https none` uses HTTP-only templates
+- `--https acme` and `--https acme-test` start with HTTP for certificate validation
+- `--https self-signed` uses HTTPS templates with the self-signed certificate
 
 ### Port Management
 
