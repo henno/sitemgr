@@ -801,11 +801,11 @@ create_site() {
 
     # Show and run the curl command
     if [ "$https_mode" = "self-signed" ] || [ "$https_mode" = "acme-test" ]; then
-        log_info "curl -kL http://$domain"
-        curl -kL "http://$domain" 2>/dev/null | head -5
+        log_info "curl -ksiL http://$domain"
+        curl -ksiL "http://$domain" 2>/dev/null | head -5
     else
-        log_info "curl -L http://$domain"
-        curl -L "http://$domain" 2>/dev/null | head -5
+        log_info "curl -siL http://$domain"
+        curl -siL "http://$domain" 2>/dev/null | head -5
     fi
 
 }
