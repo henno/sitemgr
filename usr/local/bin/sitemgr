@@ -77,6 +77,10 @@ create_phpfpm_pool() {
         -e "s/{{PHP_UPLOAD_MAX_FILESIZE}}/$PHP_UPLOAD_MAX_FILESIZE/g" \
         /etc/sitemgr/templates/php-fpm-pool.conf > "$pool_file"
 
+    # Disable default www.conf if it exists (prevents port 9000 conflict)
+    [ -f "/etc/php${php_version}/php-fpm.d/www.conf" ] && \
+        mv "/etc/php${php_version}/php-fpm.d/www.conf" "/etc/php${php_version}/php-fpm.d/www.conf.disabled" 2>/dev/null || true
+
     # Reload PHP-FPM
     rc-service "php-fpm${php_version}" reload || rc-service "php-fpm${php_version}" restart
 }
@@ -158,24 +162,28 @@ set_site_permissions() {
     local domain="$1"
     local username="$2"
 
-    # Home directory - user:nginx so nginx can traverse, others cannot
+    # Home directory - setgid so new files inherit nginx group
     chown "$username:nginx" "/sites/$domain"
-    chmod 750 "/sites/$domain"
+    chmod 2750 "/sites/$domain"
 
-    # Web directories - user:nginx for shared access
+    # Web directories - setgid for nginx access
     if [ -d "/sites/$domain/htdocs" ]; then
         chown -R "$username:nginx" "/sites/$domain/htdocs"
-        chmod 750 "/sites/$domain/htdocs"
+        chmod 2750 "/sites/$domain/htdocs"
+        find "/sites/$domain/htdocs" -type d -exec chmod 2750 {} \;
+        find "/sites/$domain/htdocs" -type f -exec chmod 640 {} \;
     fi
 
     if [ -d "/sites/$domain/app" ]; then
         chown -R "$username:nginx" "/sites/$domain/app"
-        chmod 750 "/sites/$domain/app"
+        chmod 2750 "/sites/$domain/app"
+        find "/sites/$domain/app" -type d -exec chmod 2750 {} \;
+        find "/sites/$domain/app" -type f -exec chmod 640 {} \;
     fi
 
-    # Config directory - user:nginx since nginx reads nginx.conf symlink
+    # Config directory - setgid for nginx config access
     chown -R "$username:nginx" "/sites/$domain/config"
-    chmod 750 "/sites/$domain/config"
+    chmod 2750 "/sites/$domain/config"
 
     # Set individual config file permissions
     [ -f "/sites/$domain/config/.env" ] && chmod 600 "/sites/$domain/config/.env"
@@ -184,17 +192,17 @@ set_site_permissions() {
     [ -f "/sites/$domain/config/dkim.pub" ] && chmod 644 "/sites/$domain/config/dkim.pub"
     [ -f "/sites/$domain/config/nginx.conf" ] && chmod 640 "/sites/$domain/config/nginx.conf"
 
-    # Logs - separate nginx and PHP logs for security
+    # Logs directory - setgid
     chown "$username:nginx" "/sites/$domain/logs"
-    chmod 750 "/sites/$domain/logs"
+    chmod 2750 "/sites/$domain/logs"
 
-    # Nginx logs - nginx owns, user can only read (tamper-proof)
+    # Nginx logs - nginx owns, user can read via group
     chown -R "nginx:$username" "/sites/$domain/logs/nginx"
-    chmod 750 "/sites/$domain/logs/nginx"
+    chmod 2750 "/sites/$domain/logs/nginx"
 
     # PHP logs - user owns completely
     chown -R "$username:$username" "/sites/$domain/logs/php"
-    chmod 750 "/sites/$domain/logs/php"
+    chmod 2750 "/sites/$domain/logs/php"
 
     # Private directories - user only
     chown -R "$username:$username" "/sites/$domain/tmp"
@@ -203,6 +211,13 @@ set_site_permissions() {
     chown -R "$username:$username" "/sites/$domain/.ssh"
     chmod 700 "/sites/$domain/.ssh"
     [ -f "/sites/$domain/.ssh/authorized_keys" ] && chmod 600 "/sites/$domain/.ssh/authorized_keys"
+
+    # User bin directory for scripts
+    if [ -d "/sites/$domain/bin" ]; then
+        chown -R "$username:$username" "/sites/$domain/bin"
+        chmod 755 "/sites/$domain/bin"
+        find "/sites/$domain/bin" -type f -exec chmod 755 {} \;
+    fi
 
     # User config directories
     if [ -d "/sites/$domain/.config" ]; then
@@ -358,12 +373,15 @@ else
     echo "Error: No web root directory found"
     exit 1
 fi
-chmod -R 555 "$WEB_ROOT" 2>/dev/null || true
+# Set directories to r-xr-s--- (2550) and files to r--r----- (440)
+find "$WEB_ROOT" -type d -exec chmod 2550 {} \;
+find "$WEB_ROOT" -type f -exec chmod 440 {} \;
 # Apply exceptions from readwritedirectories.txt
 if [ -f "/sites/$DOMAIN/config/readwritedirectories.txt" ]; then
     while IFS= read -r dir; do
         if [ -n "$dir" ] && [ -d "$WEB_ROOT/$dir" ]; then
-            chmod -R 755 "$WEB_ROOT/$dir" 2>/dev/null || true
+            find "$WEB_ROOT/$dir" -type d -exec chmod 2750 {} \;
+            find "$WEB_ROOT/$dir" -type f -exec chmod 640 {} \;
         fi
     done < "/sites/$DOMAIN/config/readwritedirectories.txt"
     echo "Site is now read-only (except directories in config/readwritedirectories.txt)"
@@ -385,11 +403,33 @@ else
     echo "Error: No web root directory found"
     exit 1
 fi
-chmod -R 755 "$WEB_ROOT" 2>/dev/null || true
+# Set directories to rwxr-s--- (2750) and files to rw-r----- (640)
+find "$WEB_ROOT" -type d -exec chmod 2750 {} \;
+find "$WEB_ROOT" -type f -exec chmod 640 {} \;
 echo "Site is now writable for updates"
 echo "Remember to run 'site-readonly' when done!"
 EOCMD
     chmod +x "/sites/$domain/site-writable"
+}
+
+# Create composer wrapper script
+create_composer_wrapper() {
+    local domain="$1"
+
+    cat > "/sites/$domain/bin/composer" << 'EOCMD'
+#!/bin/sh
+# Composer wrapper that uses the site's PHP version
+if [ -f "/sites/$(basename ~)/config/.env" ]; then
+    . "/sites/$(basename ~)/config/.env"
+fi
+PHP_BIN="/usr/bin/php${PHP_VERSION:-84}"
+if [ ! -x "$PHP_BIN" ]; then
+    echo "Error: PHP version $PHP_VERSION not found"
+    exit 1
+fi
+exec "$PHP_BIN" /usr/bin/composer.phar "$@"
+EOCMD
+    chmod +x "/sites/$domain/bin/composer"
 }
 
 # Create database and return password
@@ -431,6 +471,7 @@ create_config_files() {
     # Create .env file
     cat > "/sites/$domain/config/.env" << EOENV
 DOMAIN=$domain
+PHP_VERSION=$php_version
 DB_HOST=localhost
 DB_DATABASE=$username
 DB_USERNAME=$username
@@ -594,7 +635,7 @@ set -gx HOME /sites/$domain
 
 # Configure npm to install global packages in user home
 set -gx NPM_CONFIG_PREFIX /sites/$domain/.npm-global
-set -gx PATH /sites/$domain/.npm-global/bin \$PATH
+set -gx PATH /sites/$domain/bin /sites/$domain/.npm-global/bin \$PATH
 
 # Welcome message
 echo "==============================================="
@@ -625,7 +666,6 @@ create_system_user() {
 
     getent group nginx >/dev/null || addgroup nginx
     adduser -D -s /usr/bin/fish -h "/sites/$domain" "$username" 2>/dev/null || true
-    addgroup "$username" nginx 2>/dev/null || true
     passwd -d "$username" >/dev/null 2>&1
 }
 
@@ -648,6 +688,7 @@ create_site_directories() {
     mkdir -p "/sites/$domain/.config/fish"
     mkdir -p "/sites/$domain/.local/share"
     mkdir -p "/sites/$domain/.npm-global"
+    mkdir -p "/sites/$domain/bin"
 
     # Create npmrc file
     echo "prefix=/sites/$domain/.npm-global" > "/sites/$domain/.npmrc"
@@ -696,6 +737,11 @@ create_site() {
 
     # Create site management scripts
     create_site_scripts "$domain"
+
+    # Create composer wrapper for PHP sites
+    if [ "$site_type" = "php" ]; then
+        create_composer_wrapper "$domain"
+    fi
 
     # Setup SSH access
     setup_ssh_access "$domain" "$username"
@@ -901,6 +947,11 @@ change_php() {
 
     # Create new PHP-FPM pool
     create_phpfpm_pool "$domain" "$username" "$new_php_version"
+
+    # Update PHP_VERSION in .env
+    if [ -f "/sites/$domain/config/.env" ]; then
+        sed -i "s/^PHP_VERSION=.*/PHP_VERSION=$new_php_version/" "/sites/$domain/config/.env"
+    fi
 
     # Update nginx config
     local template=""
