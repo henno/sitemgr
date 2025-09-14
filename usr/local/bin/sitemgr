@@ -12,11 +12,13 @@ case "${TERM:-}" in
             RED='\033[0;31m'
             GREEN='\033[0;32m'
             YELLOW='\033[1;33m'
+            BOLD='\033[1m'
             NC='\033[0m' # No Color
         else
             RED=''
             GREEN=''
             YELLOW=''
+            BOLD=''
             NC=''
         fi
         ;;
@@ -24,6 +26,7 @@ case "${TERM:-}" in
         RED=''
         GREEN=''
         YELLOW=''
+        BOLD=''
         NC=''
         ;;
 esac
@@ -802,7 +805,7 @@ create_site() {
 
     log_info "Site $domain created successfully!"
     log_info "Database Password: $db_password"
-    log_info "SSH: ssh $username@$domain"
+    printf "${GREEN}[INFO]${NC} SSH: ${BOLD}ssh %s@%s${NC}\n" "$username" "$domain"
     [ "$site_type" = "bun" ] && log_info "Bun app port: $port"
 
     # Test the site with curl
