@@ -1086,30 +1086,27 @@ Site Management Tool for Alpine Linux
 Usage: $(basename $0) [COMMAND] [OPTIONS]
 
 Commands:
-    --create DOMAIN [OPTIONS]     Create a new site
-    --destroy DOMAIN             Destroy/remove a site
-    --remove DOMAIN              Destroy/remove a site (alias for --destroy)
-    --list                       List all sites
-    --change-php DOMAIN VERSION  Change PHP version for a site
-    --change-https DOMAIN MODE [--force]  Change HTTPS mode for a site
+    --list                      List all sites
+    --create DOMAIN [OPTIONS]   Create a new site
+    --destroy DOMAIN            Destroy/remove a site
+    --change DOMAIN [OPTIONS]   Change site configuration
 
-Create Options:
-    --user USERNAME             System username (default: domain-based)
-    --php VERSION               PHP version (81, 82, 83, 84) (default: $DEFAULT_PHP_VERSION)
-    --https MODE                HTTPS mode (none, self-signed, acme, acme-test) (default: $DEFAULT_HTTPS_MODE)
-    --type TYPE                 Site type (php, bun) (default: php)
-    --wordpress                 Install WordPress
+Create Options (required: --php or --bun, and --https):
+    --php=VERSION               PHP version (82, 83, 84)
+    --bun                       Create a Bun site instead of PHP
+    --https=MODE                HTTPS mode (none, self-signed, acme, acme-test)
+    --user=USERNAME             System username (default: domain-based)
+
+Change Options:
+    --php=VERSION               Change PHP version (82, 83, 84)
+    --https=MODE                Change HTTPS mode (none, self-signed, acme, acme-test)
+    --force                     Force certificate renewal (with --https)
 
 Examples:
-    $(basename $0) --create example.com
-    $(basename $0) --create example.com --php 84 --https acme
-    $(basename $0) --create api.example.com --type bun
+    $(basename $0) --create example.com --php=84 --https=acme
+    $(basename $0) --create api.example.com --bun --https=none
     $(basename $0) --destroy example.com
-    $(basename $0) --change-php example.com 84
-    $(basename $0) --change-https example.com acme
-
-Available PHP versions: $(get_available_php_versions)
-Available HTTPS modes: $(get_available_https_modes)
+    $(basename $0) --change example.com --php=84 --https=acme
 EOF
 }
 
@@ -1121,9 +1118,9 @@ EOF
 COMMAND=""
 DOMAIN=""
 USERNAME=""
-PHP_VERSION="$DEFAULT_PHP_VERSION"
-HTTPS_MODE="$DEFAULT_HTTPS_MODE"
-SITE_TYPE="php"
+PHP_VERSION=""
+HTTPS_MODE=""
+SITE_TYPE=""
 IS_WORDPRESS="false"
 FORCE="false"
 
@@ -1134,7 +1131,7 @@ while [ $# -gt 0 ]; do
             DOMAIN="$2"
             shift 2
             ;;
-        --destroy|--remove)
+        --destroy)
             COMMAND="remove"
             DOMAIN="$2"
             shift 2
@@ -1143,42 +1140,42 @@ while [ $# -gt 0 ]; do
             COMMAND="list"
             shift
             ;;
-        --change-php)
-            COMMAND="change-php"
+        --change)
+            COMMAND="change"
             DOMAIN="$2"
-            PHP_VERSION="$3"
-            shift 3
+            shift 2
             ;;
-        --change-https)
-            COMMAND="change-https"
-            DOMAIN="$2"
-            HTTPS_MODE="$3"
-            shift 3
-            # Check for --force flag
-            if [ "$1" = "--force" ]; then
-                FORCE="true"
-                shift
-            fi
+        --user=*)
+            USERNAME="${1#*=}"
+            shift
             ;;
         --user)
             USERNAME="$2"
             shift 2
             ;;
+        --php=*)
+            PHP_VERSION="${1#*=}"
+            shift
+            ;;
         --php)
             PHP_VERSION="$2"
             shift 2
+            ;;
+        --https=*)
+            HTTPS_MODE="${1#*=}"
+            shift
             ;;
         --https)
             HTTPS_MODE="$2"
             shift 2
             ;;
+        --bun)
+            SITE_TYPE="bun"
+            shift
+            ;;
         --type)
             SITE_TYPE="$2"
             shift 2
-            ;;
-        --wordpress)
-            IS_WORDPRESS="true"
-            shift
             ;;
         --force)
             FORCE="true"
@@ -1205,6 +1202,25 @@ case "$COMMAND" in
             exit 1
         fi
 
+        # Check that either --php or --bun was specified
+        if [ -z "$PHP_VERSION" ] && [ "$SITE_TYPE" != "bun" ]; then
+            log_error "Either --php=VERSION or --bun must be specified"
+            show_usage
+            exit 1
+        fi
+
+        # Check that --https was specified
+        if [ -z "$HTTPS_MODE" ]; then
+            log_error "--https=MODE is required (none, self-signed, acme, or acme-test)"
+            show_usage
+            exit 1
+        fi
+
+        # Set site type to php if PHP version was specified
+        if [ -n "$PHP_VERSION" ]; then
+            SITE_TYPE="php"
+        fi
+
         # Generate username if not provided
         if [ -z "$USERNAME" ]; then
             USERNAME=$(echo "$DOMAIN" | sed 's/\.//g' | cut -c1-32)
@@ -1226,22 +1242,29 @@ case "$COMMAND" in
         list_sites
         ;;
 
-    change-php)
-        if [ -z "$DOMAIN" ] || [ -z "$PHP_VERSION" ]; then
-            log_error "Domain and PHP version are required"
+    change)
+        if [ -z "$DOMAIN" ]; then
+            log_error "Domain is required"
             show_usage
             exit 1
         fi
-        change_php "$DOMAIN" "$PHP_VERSION"
-        ;;
 
-    change-https)
-        if [ -z "$DOMAIN" ] || [ -z "$HTTPS_MODE" ]; then
-            log_error "Domain and HTTPS mode are required"
+        # Check what needs to be changed
+        if [ -z "$PHP_VERSION" ] && [ -z "$HTTPS_MODE" ]; then
+            log_error "Either --php=VERSION or --https=MODE must be specified"
             show_usage
             exit 1
         fi
-        change_https "$DOMAIN" "$HTTPS_MODE" "$FORCE"
+
+        # Change PHP version if specified
+        if [ -n "$PHP_VERSION" ]; then
+            change_php "$DOMAIN" "$PHP_VERSION"
+        fi
+
+        # Change HTTPS mode if specified
+        if [ -n "$HTTPS_MODE" ]; then
+            change_https "$DOMAIN" "$HTTPS_MODE" "$FORCE"
+        fi
         ;;
 
     *)
