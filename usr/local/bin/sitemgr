@@ -517,8 +517,7 @@ configure_ssh_access() {
     local username="$2"
 
     # No special SSH configuration needed - users have normal shell access
-    # Just reload SSH to ensure it picks up the new user
-    rc-service sshd reload
+    # SSH automatically recognizes new system users without needing a reload
 }
 
 # Remove SSH configuration
