@@ -799,11 +799,13 @@ create_site() {
     log_info "Testing site connectivity..."
     sleep 2  # Give services a moment to fully start
 
-    # Show the curl command for testing
+    # Show and run the curl command
     if [ "$https_mode" = "self-signed" ] || [ "$https_mode" = "acme-test" ]; then
-        log_info "Test with: curl -kL http://$domain"
+        log_info "curl -kL http://$domain"
+        curl -kL "http://$domain" 2>/dev/null | head -5
     else
-        log_info "Test with: curl -L http://$domain"
+        log_info "curl -L http://$domain"
+        curl -L "http://$domain" 2>/dev/null | head -5
     fi
 
 }
