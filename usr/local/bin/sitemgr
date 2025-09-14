@@ -799,36 +799,13 @@ create_site() {
     log_info "Testing site connectivity..."
     sleep 2  # Give services a moment to fully start
 
-    # Determine curl flags based on HTTPS mode
-    local curl_flags="-s -o /dev/null -w '%{http_code} -> %{url_effective}\n' -L --max-redirs 3"
+    # Show the curl command for testing
     if [ "$https_mode" = "self-signed" ] || [ "$https_mode" = "acme-test" ]; then
-        curl_flags="-k $curl_flags"  # Skip certificate verification for self-signed/test certs
-    fi
-
-    # Always test with HTTP to verify redirects work
-    log_info "Test result: $(eval curl $curl_flags http://$domain)"
-
-    # Also test the actual content
-    local response
-    if [ "$https_mode" = "self-signed" ] || [ "$https_mode" = "acme-test" ]; then
-        response=$(curl -sk -L --max-redirs 3 "http://$domain" 2>/dev/null | head -1)
+        log_info "Test with: curl -kL http://$domain"
     else
-        response=$(curl -s -L --max-redirs 3 "http://$domain" 2>/dev/null | head -1)
+        log_info "Test with: curl -L http://$domain"
     fi
 
-    if [ "$site_type" = "bun" ]; then
-        if echo "$response" | grep -q "Welcome to $domain"; then
-            log_info "✓ Bun app is responding correctly"
-        else
-            log_warn "⚠ Bun app may not be responding correctly"
-        fi
-    else
-        if echo "$response" | grep -q "Site: $domain"; then
-            log_info "✓ PHP site is responding correctly"
-        else
-            log_warn "⚠ PHP site may not be responding correctly"
-        fi
-    fi
 }
 
 # Remove a site
