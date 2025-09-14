@@ -525,8 +525,11 @@ remove_ssh_config() {
     local username="$1"
 
     # Remove any old SSH config if it exists (for backward compatibility)
-    sed -i "/^Match User $username$/,/^$/d" /etc/ssh/sshd_config 2>/dev/null || true
-    rc-service sshd reload
+    # Only reload if the config file was actually modified
+    if grep -q "^Match User $username$" /etc/ssh/sshd_config 2>/dev/null; then
+        sed -i "/^Match User $username$/,/^$/d" /etc/ssh/sshd_config
+        rc-service sshd reload
+    fi
 }
 
 # Setup Bun site
