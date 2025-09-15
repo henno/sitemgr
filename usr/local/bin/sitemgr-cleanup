@@ -37,9 +37,10 @@ clean_site_tmp() {
     # Clean empty directories (except opcache which should stay)
     find "$site_dir/tmp" -mindepth 1 -type d -not -name "opcache" -empty -delete 2>/dev/null
 
-    # Clean other old temp files (be conservative)
+    # Clean other old temp files (be conservative, preserve README.md)
     find "$site_dir/tmp" -maxdepth 1 -type f -mtime +$GENERAL_AGE \
         \( -name "*.tmp" -o -name "temp_*" -o -name "tmp_*" \) \
+        -not -name "README.md" \
         -delete 2>/dev/null
 }
 

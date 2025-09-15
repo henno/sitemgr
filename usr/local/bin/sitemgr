@@ -708,6 +708,40 @@ create_site_directories() {
 
     # Create npmrc file
     echo "prefix=/sites/$domain/.npm-global" > "/sites/$domain/.npmrc"
+
+    # Create tmp README
+    create_tmp_readme "$domain"
+}
+
+# Create README.md for tmp directory
+create_tmp_readme() {
+    local domain="$1"
+
+    cat > "/sites/$domain/tmp/README.md" << 'EOF'
+# Temporary Files Directory
+
+This directory contains temporary files for your site.
+
+## Purpose
+- PHP session files (sess_*)
+- File uploads during processing
+- System temporary files
+- SOAP WSDL cache
+- OPcache file cache (in opcache/ subdirectory)
+
+## Automatic Cleanup
+Files in this directory are automatically cleaned daily:
+- Session files: removed after 7 days
+- Upload temp files: removed after 1 day
+- OPcache files: removed after 30 days
+- Other temp files: removed after 7 days
+
+## Important Notes
+- Do NOT store permanent files here
+- Files may be deleted without warning based on age
+- The cleanup runs daily at night via /usr/local/bin/sitemgr-cleanup
+- This directory is private to your site (mode 700)
+EOF
 }
 
 # ============================================================================
