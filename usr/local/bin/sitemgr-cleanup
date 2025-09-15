@@ -5,7 +5,6 @@
 # Age in days for different file types
 SESSION_AGE=7      # PHP session files
 UPLOAD_AGE=1       # Uploaded files not processed
-OPCACHE_AGE=30     # OPcache files
 GENERAL_AGE=30     # ALL other files (except README.md)
 
 # Function to clean a site's tmp directory
@@ -28,19 +27,13 @@ clean_site_tmp() {
     count=$(find "$site_dir/tmp" -maxdepth 1 -regex ".*/php[A-Za-z0-9]\{6\}$" -type f -mtime +$UPLOAD_AGE -delete -print 2>/dev/null | wc -l)
     [ "$count" -gt 0 ] && echo "  Removed $count old PHP upload files"
 
-    # Clean old OPcache files
-    if [ -d "$site_dir/tmp/opcache" ]; then
-        count=$(find "$site_dir/tmp/opcache" -type f -mtime +$OPCACHE_AGE -delete -print 2>/dev/null | wc -l)
-        [ "$count" -gt 0 ] && echo "  Removed $count old OPcache files"
-    fi
-
     # Clean ALL other files older than 30 days (except README.md)
-    # This includes WSDL cache, custom temp files, etc.
+    # This includes OPcache, WSDL cache, custom temp files, etc.
     count=$(find "$site_dir/tmp" -type f -mtime +$GENERAL_AGE -not -name "README.md" -not -name "sess_*" -not -regex ".*/php[A-Za-z0-9]\{6\}$" -delete -print 2>/dev/null | wc -l)
     [ "$count" -gt 0 ] && echo "  Removed $count old files (30+ days)"
 
-    # Clean ALL empty directories (except opcache root)
-    count=$(find "$site_dir/tmp" -mindepth 1 -type d -empty -not -path "*/opcache" -delete -print 2>/dev/null | wc -l)
+    # Clean ALL empty directories (except opcache directory which PHP expects to exist)
+    count=$(find "$site_dir/tmp" -mindepth 1 -type d -empty -not -name "opcache" -not -path "*/opcache/*" -delete -print 2>/dev/null | wc -l)
     [ "$count" -gt 0 ] && echo "  Removed $count empty directories"
 }
 
@@ -59,9 +52,8 @@ Options:
 This script cleans:
     - PHP session files older than $SESSION_AGE days
     - PHP upload temp files older than $UPLOAD_AGE day
-    - OPcache files older than $OPCACHE_AGE days
     - ALL other files older than $GENERAL_AGE days (except README.md)
-    - Empty directories (except opcache/)
+    - Empty directories (preserves opcache/ directory)
 
 EOF
     exit 0
