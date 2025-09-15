@@ -835,6 +835,13 @@ remove_site() {
 
     local username=$(stat -c %U "/sites/$domain" 2>/dev/null || echo "")
 
+    # Safety check: Never delete critical system users
+    if [ "$username" = "root" ] || [ "$username" = "nobody" ] || [ "$username" = "daemon" ] || [ -z "$username" ]; then
+        log_error "Cannot remove site owned by system user: $username"
+        log_error "Please manually clean up /sites/$domain if needed"
+        return 1
+    fi
+
     if [ "$force" != "true" ]; then
         echo "This will permanently delete:"
         echo "  - Site directory: /sites/$domain"
