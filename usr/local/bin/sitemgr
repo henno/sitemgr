@@ -734,7 +734,6 @@ Files and directories are automatically cleaned daily:
 - PHP session files: removed after 7 days
 - PHP upload temp files: removed after 1 day
 - OPcache files: removed after 30 days
-- WSDL cache files: removed after 7 days
 - ALL other files: removed after 30 days (except this README)
 - Empty directories: removed daily
 
