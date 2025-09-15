@@ -1,0 +1,4 @@
+#!/bin/sh
+# Daily cleanup of site temporary files
+
+/usr/local/bin/sitemgr-cleanup

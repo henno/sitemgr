@@ -1,0 +1,80 @@
+#!/bin/sh
+# Clean temporary files for all sites
+# This script cleans old temporary files from site-specific tmp directories
+
+# Age in days for different file types
+SESSION_AGE=7      # PHP session files
+UPLOAD_AGE=1       # Uploaded files not processed
+OPCACHE_AGE=30     # OPcache files
+GENERAL_AGE=7      # General temp files
+
+# Function to clean a site's tmp directory
+clean_site_tmp() {
+    local site_dir="$1"
+    local domain=$(basename "$site_dir")
+
+    if [ ! -d "$site_dir/tmp" ]; then
+        return
+    fi
+
+    echo "Cleaning tmp for $domain..."
+
+    # Clean old PHP session files (sess_*)
+    find "$site_dir/tmp" -maxdepth 1 -name "sess_*" -type f -mtime +$SESSION_AGE -delete 2>/dev/null
+
+    # Clean old upload temp files
+    find "$site_dir/tmp" -maxdepth 1 -name "php*" -type f -mtime +$UPLOAD_AGE -delete 2>/dev/null
+    find "$site_dir/tmp" -maxdepth 1 -name "upload_*" -type f -mtime +$UPLOAD_AGE -delete 2>/dev/null
+
+    # Clean old OPcache files (but keep the directory)
+    if [ -d "$site_dir/tmp/opcache" ]; then
+        find "$site_dir/tmp/opcache" -type f -mtime +$OPCACHE_AGE -delete 2>/dev/null
+    fi
+
+    # Clean old SOAP WSDL cache files
+    find "$site_dir/tmp" -maxdepth 1 -name "wsdl-*" -type f -mtime +$GENERAL_AGE -delete 2>/dev/null
+
+    # Clean empty directories (except opcache which should stay)
+    find "$site_dir/tmp" -mindepth 1 -type d -not -name "opcache" -empty -delete 2>/dev/null
+
+    # Clean other old temp files (be conservative)
+    find "$site_dir/tmp" -maxdepth 1 -type f -mtime +$GENERAL_AGE \
+        \( -name "*.tmp" -o -name "temp_*" -o -name "tmp_*" \) \
+        -delete 2>/dev/null
+}
+
+# Main execution
+if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+    cat << EOF
+Site temporary files cleanup script
+
+Usage: $(basename $0) [OPTIONS]
+
+Options:
+    --dry-run    Show what would be deleted without actually deleting
+    --verbose    Show detailed output
+    --help       Show this help message
+
+This script cleans:
+    - PHP session files older than $SESSION_AGE days
+    - Upload temp files older than $UPLOAD_AGE day
+    - OPcache files older than $OPCACHE_AGE days
+    - General temp files older than $GENERAL_AGE days
+
+EOF
+    exit 0
+fi
+
+# Check if running as root
+if [ "$(id -u)" != "0" ]; then
+    echo "Error: This script must be run as root" >&2
+    exit 1
+fi
+
+# Process all sites
+for site_dir in /sites/*/; do
+    [ -d "$site_dir" ] || continue
+    clean_site_tmp "$site_dir"
+done
+
+echo "Cleanup completed."
