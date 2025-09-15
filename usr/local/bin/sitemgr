@@ -1227,6 +1227,13 @@ case "$COMMAND" in
             USERNAME=$(echo "$DOMAIN" | sed 's/\.//g' | cut -c1-32)
         fi
 
+        # Safety check: Never use system usernames
+        if [ "$USERNAME" = "root" ] || [ "$USERNAME" = "nobody" ] || [ "$USERNAME" = "daemon" ] || [ "$USERNAME" = "nginx" ] || [ "$USERNAME" = "www-data" ]; then
+            log_error "Cannot create site with system username: $USERNAME"
+            log_error "Please specify a different username with --user=USERNAME"
+            exit 1
+        fi
+
         create_site "$DOMAIN" "$USERNAME" "$PHP_VERSION" "$HTTPS_MODE" "$SITE_TYPE" "$IS_WORDPRESS"
         ;;
 
