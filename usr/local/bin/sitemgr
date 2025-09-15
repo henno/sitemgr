@@ -730,15 +730,18 @@ This directory contains temporary files for your site.
 - OPcache file cache (in opcache/ subdirectory)
 
 ## Automatic Cleanup
-Files in this directory are automatically cleaned daily:
-- Session files: removed after 7 days
-- Upload temp files: removed after 1 day
+Files and directories are automatically cleaned daily:
+- PHP session files: removed after 7 days
+- PHP upload temp files: removed after 1 day
 - OPcache files: removed after 30 days
-- Other temp files: removed after 7 days
+- WSDL cache files: removed after 7 days
+- ALL other files: removed after 30 days (except this README)
+- Empty directories: removed daily
 
 ## Important Notes
 - Do NOT store permanent files here
-- Files may be deleted without warning based on age
+- ANY file older than 30 days will be deleted (except README.md)
+- Empty directories are removed daily
 - The cleanup runs daily at night via /usr/local/bin/sitemgr-cleanup
 - This directory is private to your site (mode 700)
 EOF

@@ -6,7 +6,8 @@
 SESSION_AGE=7      # PHP session files
 UPLOAD_AGE=1       # Uploaded files not processed
 OPCACHE_AGE=30     # OPcache files
-GENERAL_AGE=7      # General temp files
+WSDL_AGE=7         # SOAP WSDL cache files
+GENERAL_AGE=30     # ALL other files (except README.md)
 
 # Function to clean a site's tmp directory
 clean_site_tmp() {
@@ -18,30 +19,33 @@ clean_site_tmp() {
     fi
 
     echo "Cleaning tmp for $domain..."
+    local count=0
 
     # Clean old PHP session files (sess_*)
-    find "$site_dir/tmp" -maxdepth 1 -name "sess_*" -type f -mtime +$SESSION_AGE -delete 2>/dev/null
+    count=$(find "$site_dir/tmp" -maxdepth 1 -name "sess_*" -type f -mtime +$SESSION_AGE -delete -print 2>/dev/null | wc -l)
+    [ "$count" -gt 0 ] && echo "  Removed $count old session files"
 
-    # Clean old upload temp files
-    find "$site_dir/tmp" -maxdepth 1 -name "php*" -type f -mtime +$UPLOAD_AGE -delete 2>/dev/null
-    find "$site_dir/tmp" -maxdepth 1 -name "upload_*" -type f -mtime +$UPLOAD_AGE -delete 2>/dev/null
+    # Clean old PHP upload temp files (php followed by 6 chars)
+    count=$(find "$site_dir/tmp" -maxdepth 1 -regex ".*/php[A-Za-z0-9]\{6\}$" -type f -mtime +$UPLOAD_AGE -delete -print 2>/dev/null | wc -l)
+    [ "$count" -gt 0 ] && echo "  Removed $count old PHP upload files"
 
-    # Clean old OPcache files (but keep the directory)
+    # Clean old OPcache files
     if [ -d "$site_dir/tmp/opcache" ]; then
-        find "$site_dir/tmp/opcache" -type f -mtime +$OPCACHE_AGE -delete 2>/dev/null
+        count=$(find "$site_dir/tmp/opcache" -type f -mtime +$OPCACHE_AGE -delete -print 2>/dev/null | wc -l)
+        [ "$count" -gt 0 ] && echo "  Removed $count old OPcache files"
     fi
 
     # Clean old SOAP WSDL cache files
-    find "$site_dir/tmp" -maxdepth 1 -name "wsdl-*" -type f -mtime +$GENERAL_AGE -delete 2>/dev/null
+    count=$(find "$site_dir/tmp" -maxdepth 1 -name "wsdl-*" -type f -mtime +$WSDL_AGE -delete -print 2>/dev/null | wc -l)
+    [ "$count" -gt 0 ] && echo "  Removed $count old WSDL cache files"
 
-    # Clean empty directories (except opcache which should stay)
-    find "$site_dir/tmp" -mindepth 1 -type d -not -name "opcache" -empty -delete 2>/dev/null
+    # Clean ALL other files older than 30 days (except README.md)
+    count=$(find "$site_dir/tmp" -type f -mtime +$GENERAL_AGE -not -name "README.md" -not -name "sess_*" -not -regex ".*/php[A-Za-z0-9]\{6\}$" -not -name "wsdl-*" -delete -print 2>/dev/null | wc -l)
+    [ "$count" -gt 0 ] && echo "  Removed $count old files (30+ days)"
 
-    # Clean other old temp files (be conservative, preserve README.md)
-    find "$site_dir/tmp" -maxdepth 1 -type f -mtime +$GENERAL_AGE \
-        \( -name "*.tmp" -o -name "temp_*" -o -name "tmp_*" \) \
-        -not -name "README.md" \
-        -delete 2>/dev/null
+    # Clean ALL empty directories (except opcache root)
+    count=$(find "$site_dir/tmp" -mindepth 1 -type d -empty -not -path "*/opcache" -delete -print 2>/dev/null | wc -l)
+    [ "$count" -gt 0 ] && echo "  Removed $count empty directories"
 }
 
 # Main execution
@@ -58,9 +62,11 @@ Options:
 
 This script cleans:
     - PHP session files older than $SESSION_AGE days
-    - Upload temp files older than $UPLOAD_AGE day
+    - PHP upload temp files older than $UPLOAD_AGE day
     - OPcache files older than $OPCACHE_AGE days
-    - General temp files older than $GENERAL_AGE days
+    - WSDL cache files older than $WSDL_AGE days
+    - ALL other files older than $GENERAL_AGE days (except README.md)
+    - Empty directories (except opcache/)
 
 EOF
     exit 0
