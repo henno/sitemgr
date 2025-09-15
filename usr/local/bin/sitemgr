@@ -691,6 +691,7 @@ create_site_directories() {
 
     mkdir -p "/sites/$domain"/{config,logs,tmp}
     mkdir -p "/sites/$domain/logs"/{nginx,php}
+    mkdir -p "/sites/$domain/tmp/opcache"
 
     if [ "$site_type" = "bun" ]; then
         mkdir -p "/sites/$domain/app"
