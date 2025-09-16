@@ -57,10 +57,12 @@ add_action('admin_head', function() {
     ?>
     <div id="readonly-banner" style="position: fixed; top: 32px; left: 0; right: 0; z-index: 99999; background: linear-gradient(90deg, #dc3545 0%, #c82333 100%); color: white; padding: 10px 20px; text-align: center; font-weight: 600; font-size: 13px; line-height: 1.4; box-shadow: 0 3px 6px rgba(0,0,0,0.3); border-bottom: 2px solid #a01e2a;">
         🔒 <strong>READ-ONLY MODE</strong> |
-        To update WP/plugins/themes: ask <strong><a href="mailto:it@torva.ee" style="color: #fff; text-decoration: underline;">it@torva.ee</a></strong> to add your SSH public key.
+        <span style="color: #ffb3d9;">
+        To update WP/plugins/themes: ask <strong><a href="mailto:it@torva.ee" style="color: #ffb3d9; text-decoration: underline;">it@torva.ee</a></strong> to add your SSH public key.
         Then in Terminal, run <code style="background: rgba(255,255,255,0.2); padding: 2px 6px; border-radius: 3px;">ssh user@domain</code> and
         <code style="background: rgba(255,255,255,0.2); padding: 2px 6px; border-radius: 3px;">site -w</code> to make the site writable.
         When done, run <code style="background: rgba(255,255,255,0.2); padding: 2px 6px; border-radius: 3px;">site -r</code> to re-secure it from hacking.
+        </span>
     </div>
     <?php
     ?>
