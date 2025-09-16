@@ -185,7 +185,8 @@ add_action('admin_head', function() {
             1. Ask <a href="mailto:it@torva.ee" style="color: #0073aa; text-decoration: underline;">it@torva.ee</a> to add your SSH public key<br>
             2. In Terminal, run: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">ssh $SITE_USER@$DOMAIN</code><br>
             3. Make site writeable: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -w</code><br>
-            4. Re-secure the site: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -r</code>
+            4. Update WordPress, plugins or themes<br>
+            5. Re-secure the site: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -r</code>
         </div>
     </div>
     <?php
