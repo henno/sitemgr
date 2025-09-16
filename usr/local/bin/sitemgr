@@ -254,16 +254,6 @@ set_site_permissions() {
         chmod 644 "/sites/$domain/.npmrc"
     fi
 
-    # Site management scripts
-    if [ -f "/sites/$domain/site-readonly" ]; then
-        chown "$username:$username" "/sites/$domain/site-readonly"
-        chmod 755 "/sites/$domain/site-readonly"
-    fi
-
-    if [ -f "/sites/$domain/site-writable" ]; then
-        chown "$username:$username" "/sites/$domain/site-writable"
-        chmod 755 "/sites/$domain/site-writable"
-    fi
 }
 
 # Create symlink for nginx configuration
@@ -370,60 +360,6 @@ get_available_https_modes() {
     echo "none|self-signed|acme|acme-test"
 }
 
-# Create site-readonly and site-writable scripts
-create_site_scripts() {
-    local domain="$1"
-
-    cat > "/sites/$domain/site-readonly" << 'EOCMD'
-#!/bin/sh
-# Set site to read-only mode (production)
-DOMAIN=$(basename $(pwd))
-if [ -d "/sites/$DOMAIN/htdocs" ]; then
-    WEB_ROOT="/sites/$DOMAIN/htdocs"
-elif [ -d "/sites/$DOMAIN/app" ]; then
-    WEB_ROOT="/sites/$DOMAIN/app"
-else
-    echo "Error: No web root directory found"
-    exit 1
-fi
-# Set directories to r-xr-s--- (2550) and files to r--r----- (440)
-find "$WEB_ROOT" -type d -exec chmod 2550 {} \;
-find "$WEB_ROOT" -type f -exec chmod 440 {} \;
-# Apply exceptions from readwritedirectories.txt
-if [ -f "/sites/$DOMAIN/config/readwritedirectories.txt" ]; then
-    while IFS= read -r dir; do
-        if [ -n "$dir" ] && [ -d "$WEB_ROOT/$dir" ]; then
-            find "$WEB_ROOT/$dir" -type d -exec chmod 2750 {} \;
-            find "$WEB_ROOT/$dir" -type f -exec chmod 640 {} \;
-        fi
-    done < "/sites/$DOMAIN/config/readwritedirectories.txt"
-    echo "Site is now read-only (except directories in config/readwritedirectories.txt)"
-else
-    echo "Site is now read-only"
-fi
-EOCMD
-    chmod +x "/sites/$domain/site-readonly"
-
-    cat > "/sites/$domain/site-writable" << 'EOCMD'
-#!/bin/sh
-# Enable write mode for site updates
-DOMAIN=$(basename $(pwd))
-if [ -d "/sites/$DOMAIN/htdocs" ]; then
-    WEB_ROOT="/sites/$DOMAIN/htdocs"
-elif [ -d "/sites/$DOMAIN/app" ]; then
-    WEB_ROOT="/sites/$DOMAIN/app"
-else
-    echo "Error: No web root directory found"
-    exit 1
-fi
-# Set directories to rwxr-s--- (2750) and files to rw-r----- (640)
-find "$WEB_ROOT" -type d -exec chmod 2750 {} \;
-find "$WEB_ROOT" -type f -exec chmod 640 {} \;
-echo "Site is now writable for updates"
-echo "Remember to run 'site-readonly' when done!"
-EOCMD
-    chmod +x "/sites/$domain/site-writable"
-}
 
 # Create composer wrapper script
 create_composer_wrapper() {
@@ -791,9 +727,6 @@ create_site() {
 
     # Create configuration files
     create_config_files "$domain" "$username" "$db_password"
-
-    # Create site management scripts
-    create_site_scripts "$domain"
 
     # Create composer wrapper for PHP sites
     if [ "$site_type" = "php" ]; then

@@ -35,9 +35,7 @@ Each site is created under `/sites/DOMAIN/` with the following structure:
 ├── .npmrc               # NPM configuration
 ├── .config/             # User configurations (Fish shell, etc.)
 ├── .npm/                # NPM cache
-├── .npm-global/         # Global NPM packages
-├── site-readonly        # Script to make site read-only
-└── site-writable        # Script to make site writable
+└── .npm-global/         # Global NPM packages
 ```
 
 ## Key Features
@@ -183,6 +181,83 @@ sitemgr --change-https example.com acme
 # Generate DKIM keys
 sitemgr --dkim-generate example.com
 ```
+
+### Site Permission Management
+
+SiteMgr includes a powerful permission management system that allows users to easily switch between read-only (secure) and writable modes for their sites.
+
+#### The `site` Command
+
+The `site` command is available to all site users and can be run from anywhere within their site directory:
+
+```bash
+# Check current permission status
+site --status
+site -s
+
+# Enable write mode for updates
+site --writable
+site -w
+
+# Return to read-only mode (secure)
+site --readonly
+site -r
+
+# Show help
+site --help
+site -h
+```
+
+#### How It Works
+
+1. **Read-only Mode** (Production/Secure):
+   - Directories: `2550` (r-xr-s---)
+   - Files: `440` (r--r-----)
+   - Prevents unauthorized modifications
+   - Recommended for production sites
+
+2. **Writable Mode** (For Updates):
+   - Directories: `2750` (rwxr-s---)
+   - Files: `640` (rw-r-----)
+   - Allows CMS updates, plugin installations
+   - Should be temporary - return to read-only when done
+
+3. **Security Features**:
+   - Removes all "others" permissions (no access for other users)
+   - Maintains proper nginx group ownership
+   - Setgid on directories ensures new files inherit correct group
+   - Integrates with doas for privilege escalation
+
+4. **Smart Detection**:
+   - Automatically finds web root from nginx configuration
+   - Handles special cases for WordPress and Drupal
+   - Respects exceptions in `config/readwritedirectories.txt`
+
+#### Typical Workflow
+
+```bash
+# SSH into your site
+ssh user@example.com
+
+# Check current status
+site -s
+
+# Enable write mode for WordPress updates
+site -w
+
+# Perform updates via WordPress admin panel
+# ...
+
+# Return to read-only mode
+site -r
+```
+
+#### Integration with User Login
+
+When users log in, they see:
+- Current permission status of their site
+- Available commands for permission management
+- Warnings if the site is currently writable
 
 ## Template Selection Logic
 
