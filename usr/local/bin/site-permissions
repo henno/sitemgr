@@ -102,23 +102,23 @@ set_permissions() {
     echo "→ Ensuring correct ownership ($SITE_USER:nginx) for entire site..."
     find "/sites/$DOMAIN" \( ! -user "$SITE_USER" -o ! -group nginx \) -exec chown "$SITE_USER:nginx" {} +
 
-    # Install WordPress read-only notice plugin if this is a WordPress site
+    # Install/Update WordPress read-only notice plugin if this is a WordPress site
     if [ -f "$WEB_ROOT/wp-config.php" ]; then
         echo "→ WordPress site detected"
         MU_PLUGINS_DIR="$WEB_ROOT/wp-content/mu-plugins"
         NOTICE_PLUGIN="$MU_PLUGINS_DIR/readonly-notice.php"
 
-        if [ ! -f "$NOTICE_PLUGIN" ]; then
-            echo "→ Read-only notice plugin not found, installing..."
+        # Always update the plugin to ensure latest version
+        echo "→ Installing/updating read-only notice plugin..."
 
-            # Create mu-plugins directory if it doesn't exist
-            if [ ! -d "$MU_PLUGINS_DIR" ]; then
-                mkdir -p "$MU_PLUGINS_DIR"
-                chown "$SITE_USER:nginx" "$MU_PLUGINS_DIR"
-                chmod 2750 "$MU_PLUGINS_DIR"
-            fi
+        # Create mu-plugins directory if it doesn't exist
+        if [ ! -d "$MU_PLUGINS_DIR" ]; then
+            mkdir -p "$MU_PLUGINS_DIR"
+            chown "$SITE_USER:nginx" "$MU_PLUGINS_DIR"
+            chmod 2750 "$MU_PLUGINS_DIR"
+        fi
 
-            # Create the plugin file with dynamic content
+        # Create/overwrite the plugin file with dynamic content
             cat > "$NOTICE_PLUGIN" << EOPLUGIN
 <?php
 /**
@@ -223,14 +223,11 @@ add_action('admin_head', function() {
 });
 EOPLUGIN
 
-            # Set proper ownership and permissions
-            chown "$SITE_USER:nginx" "$NOTICE_PLUGIN"
-            chmod 440 "$NOTICE_PLUGIN"
+        # Set proper ownership and permissions
+        chown "$SITE_USER:nginx" "$NOTICE_PLUGIN"
+        chmod 440 "$NOTICE_PLUGIN"
 
-            echo "   ✓ WordPress read-only notice plugin installed"
-        else
-            echo "   ✓ Read-only notice plugin already installed"
-        fi
+        echo "   ✓ WordPress read-only notice plugin installed/updated"
     fi
 
     # Set base permissions for entire site directory (excluding web root which gets special handling)
