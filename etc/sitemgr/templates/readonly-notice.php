@@ -55,14 +55,16 @@ add_action('admin_head', function() {
     </style>
     <?php
     ?>
-    <div id="readonly-banner" style="position: fixed; top: 32px; left: 0; right: 0; z-index: 99999; background: linear-gradient(90deg, #dc3545 0%, #c82333 100%); color: white; padding: 10px 20px; text-align: center; font-weight: 600; font-size: 13px; line-height: 1.4; box-shadow: 0 3px 6px rgba(0,0,0,0.3); border-bottom: 2px solid #a01e2a;">
-        🔒 <strong style="font-weight: 800;">READ-ONLY MODE</strong>&nbsp;&nbsp;
-        <span style="color: #ffb3d9;">
-        To update WP/plugins/themes: ask <strong><a href="mailto:it@torva.ee" style="color: #ffb3d9; text-decoration: underline;">it@torva.ee</a></strong> to add your SSH public key.
-        Then in Terminal, run <code style="background: rgba(255,255,255,0.2); padding: 2px 6px; border-radius: 3px;">ssh user@domain</code> and
-        <code style="background: rgba(255,255,255,0.2); padding: 2px 6px; border-radius: 3px;">site -w</code> to make the site writable.
-        When done, run <code style="background: rgba(255,255,255,0.2); padding: 2px 6px; border-radius: 3px;">site -r</code> to re-secure it from hacking.
-        </span>
+    <div id="readonly-banner" style="position: fixed; top: 32px; left: 0; right: 0; z-index: 99999; background: linear-gradient(90deg, #dc3545 0%, #c82333 100%); color: white; padding: 8px 15px; text-align: center; font-weight: 600; font-size: 13px; line-height: 1.2; box-shadow: 0 3px 6px rgba(0,0,0,0.3); border-bottom: 2px solid #a01e2a; cursor: help;">
+        🔒 <strong style="font-weight: 800;">READ-ONLY MODE</strong>
+        <div id="readonly-tooltip" style="display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 10px; background: white; color: #333; padding: 15px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); width: 450px; text-align: left; font-weight: normal; font-size: 12px; z-index: 100000;">
+            <div style="position: absolute; top: -8px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-bottom: 8px solid white;"></div>
+            <strong style="color: #dc3545;">To update WP/plugins/themes:</strong><br>
+            1. Ask <a href="mailto:it@torva.ee" style="color: #0073aa; text-decoration: underline;">it@torva.ee</a> to add your SSH public key<br>
+            2. In Terminal, run: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">ssh user@domain</code><br>
+            3. Make writable: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -w</code><br>
+            4. After updates: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -r</code> to re-secure
+        </div>
     </div>
     <?php
     ?>
@@ -94,6 +96,30 @@ add_action('admin_head', function() {
                 $(this).addClass('readonly-checked');
                 $(this).attr('title', 'Site is in read-only mode - this action will fail');
             }
+        });
+
+        // Tooltip functionality
+        var banner = $('#readonly-banner');
+        var tooltip = $('#readonly-tooltip');
+        var hideTimeout;
+
+        banner.on('mouseenter', function() {
+            clearTimeout(hideTimeout);
+            tooltip.stop(true, true).fadeIn(200);
+        });
+
+        banner.on('mouseleave', function() {
+            hideTimeout = setTimeout(function() {
+                tooltip.stop(true, true).fadeOut(200);
+            }, 300);
+        });
+
+        tooltip.on('mouseenter', function() {
+            clearTimeout(hideTimeout);
+        });
+
+        tooltip.on('mouseleave', function() {
+            tooltip.stop(true, true).fadeOut(200);
         });
     });
     </script>
