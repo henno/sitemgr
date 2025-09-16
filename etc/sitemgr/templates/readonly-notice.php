@@ -59,11 +59,11 @@ add_action('admin_head', function() {
         🔒 <strong style="font-weight: 800;">READ-ONLY MODE</strong> <span style="display: inline-block; width: 16px; height: 16px; border-radius: 50%; background: rgba(255,255,255,0.3); border: 1px solid white; line-height: 14px; font-size: 11px; font-weight: bold; vertical-align: middle; margin-left: 5px;">i</span>
         <div id="readonly-tooltip" style="display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 10px; background: white; color: #333; padding: 15px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); width: 450px; text-align: left; font-weight: normal; font-size: 12px; z-index: 100000;">
             <div style="position: absolute; top: -8px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-bottom: 8px solid white;"></div>
-            <strong style="color: #dc3545;">To update WP/plugins/themes:</strong><br>
-            1. Ask <a href="mailto:it@torva.ee" style="color: #0073aa; text-decoration: underline;">it@torva.ee</a> to add your SSH public key<br>
-            2. In Terminal, run: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">ssh user@domain</code><br>
-            3. Make site writeable: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -w</code><br>
-            4. Update WordPress, plugins or themes<br>
+            <strong style="color: #dc3545;">To update WP/plugins/themes:</strong><br><br>
+            1. Ask <a href="mailto:it@torva.ee" style="color: #0073aa; text-decoration: underline;">it@torva.ee</a> to add your SSH public key<br><br>
+            2. In Terminal, run: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">ssh user@domain</code><br><br>
+            3. Make site writeable: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -w</code><br><br>
+            4. Update WordPress, plugins or themes<br><br>
             5. Re-secure the site: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -r</code>
         </div>
     </div>
