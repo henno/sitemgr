@@ -650,28 +650,34 @@ set -gx HOME /sites/$domain
 
 # Configure npm to install global packages in user home
 set -gx NPM_CONFIG_PREFIX /sites/$domain/.npm-global
-set -gx PATH /sites/$domain/bin /sites/$domain/.npm-global/bin \$PATH
+set -gx PATH /sites/$domain/bin /sites/$domain/.npm-global/bin /usr/local/bin \$PATH
 
 # Welcome message
-echo "==============================================="
 echo "Welcome to $domain"
-echo "==============================================="
 echo ""
-echo "Directories:"
-if test -d /sites/$domain/htdocs
-    echo "  /sites/$domain/htdocs/ - Your website files"
-else if test -d /sites/$domain/app
-    echo "  /sites/$domain/app/ - Your Bun application"
+
+# Show current permission status on login
+if test -d /sites/$domain
+    cd /sites/$domain
+    /usr/local/bin/site --status 2>/dev/null | grep -E "^(Status:|To enable|To secure)" || true
+    echo ""
+    echo "Commands: site -s (status) | -w (writable) | -r (readonly)"
+    echo ""
 end
-echo "  /sites/$domain/config/ - Configuration files (db, email, writable dirs)"
-echo "  /sites/$domain/logs/ - Log files"
-echo "  /sites/$domain/tmp/ - Temporary files"
-echo ""
-echo "Commands:"
-echo "  site-readonly - Set site to read-only mode (production)"
-echo "  site-writable - Enable write mode for updates"
-echo ""
 EOFISH
+}
+
+# Configure doas permissions for site management
+configure_doas_permissions() {
+    local domain="$1"
+    local username="$2"
+
+    # Add doas.conf entries for site-permissions command
+    if ! grep -q "permit nopass $username as root cmd /usr/local/bin/site-permissions args $domain" /etc/doas.conf 2>/dev/null; then
+        echo "# Allow $username to manage $domain permissions" >> /etc/doas.conf
+        echo "permit nopass $username as root cmd /usr/local/bin/site-permissions args $domain --readonly" >> /etc/doas.conf
+        echo "permit nopass $username as root cmd /usr/local/bin/site-permissions args $domain --writable" >> /etc/doas.conf
+    fi
 }
 
 # Create system user
@@ -824,6 +830,9 @@ create_site() {
 
     # Set all permissions at once
     set_site_permissions "$domain" "$username"
+
+    # Configure doas permissions for site command
+    configure_doas_permissions "$domain" "$username"
 
     # Configure SSH access
     configure_ssh_access "$domain" "$username"

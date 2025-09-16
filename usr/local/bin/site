@@ -1,0 +1,161 @@
+#!/bin/bash
+# Site permissions wrapper - calls site-permissions via doas
+# Usage: site --readonly | site --writable | site --status | site --help
+
+# Detect domain from current directory
+CURRENT_DIR=$(pwd)
+if [[ "$CURRENT_DIR" != /sites/* ]]; then
+    echo "Error: This command must be run from within /sites/domain/"
+    echo "Current directory: $CURRENT_DIR"
+    exit 1
+fi
+
+# Extract domain from path (/sites/DOMAIN/...)
+DOMAIN=$(echo "$CURRENT_DIR" | cut -d'/' -f3)
+if [ -z "$DOMAIN" ] || [ ! -d "/sites/$DOMAIN" ]; then
+    echo "Error: Could not detect valid domain from path: $CURRENT_DIR"
+    exit 1
+fi
+
+# Function to show usage
+show_usage() {
+    echo "Usage: site [OPTION]"
+    echo ""
+    echo "Options:"
+    echo "  -r, --readonly     Set site to read-only mode"
+    echo "  -w, --writable     Set site to writable mode  "
+    echo "  -s, --status       Check current permission status"
+    echo "  -h, --help         Show this help message"
+    echo ""
+    echo "Current domain: $DOMAIN"
+}
+
+# Function to show full help
+show_help() {
+    echo "site - Site permission manager"
+    echo ""
+    show_usage
+    echo ""
+    echo "Manage file permissions for the current site."
+    echo "Must be run from within /sites/DOMAIN/"
+    echo ""
+    echo "Examples:"
+    echo "  cd /sites/example.com/htdocs"
+    echo "  site -w            # Enable write mode for updates"
+    echo "  # ... perform WordPress updates ..."
+    echo "  site -r            # Secure site after updates"
+    echo ""
+    echo "Security note:"
+    echo "  Always return sites to read-only mode after updates"
+    echo "  to prevent unauthorized modifications."
+}
+
+# Function to find web root (shared logic)
+find_web_root() {
+    local web_root=""
+
+    # Check nginx config
+    if [ -f "/sites/$DOMAIN/config/nginx.conf" ]; then
+        web_root=$(grep -E '^\s*root\s+' "/sites/$DOMAIN/config/nginx.conf" | \
+                   grep -v '#' | grep -v '/var/www' | \
+                   head -1 | \
+                   sed 's/^\s*root\s*//;s/;\s*$//' | \
+                   tr -d '"' | tr -d "'")
+    fi
+
+    # Fallback to common paths
+    if [ -z "$web_root" ] || [ ! -d "$web_root" ]; then
+        for check_path in \
+            "/sites/$DOMAIN/htdocs" \
+            "/sites/$DOMAIN/public" \
+            "/sites/$DOMAIN/app" \
+            "/sites/$DOMAIN/web" \
+            "/sites/$DOMAIN/veebiplatvorm/web"; do
+            if [ -d "$check_path" ]; then
+                web_root="$check_path"
+                break
+            fi
+        done
+    fi
+
+    echo "$web_root"
+}
+
+# Function to check status (doesn't need root)
+check_status() {
+    # Find web root
+    local web_root=$(find_web_root)
+
+    if [ -z "$web_root" ] || [ ! -d "$web_root" ]; then
+        echo "Error: Could not find web root for domain: $DOMAIN"
+        return 1
+    fi
+
+    echo "Domain: $DOMAIN"
+    echo "Web root: $web_root"
+    echo ""
+    echo "Current permissions:"
+
+    # Check permissions
+    local dir_perms=$(stat -c "%a" "$web_root" 2>/dev/null)
+    local file_perms=$(find "$web_root" -maxdepth 2 -type f -exec stat -c "%a" {} \; 2>/dev/null | head -1)
+    local owner=$(stat -c "%U:%G" "$web_root" 2>/dev/null)
+
+    echo "  Directory: $dir_perms"
+    echo "  File sample: ${file_perms:-N/A}"
+    echo "  Ownership: $owner"
+    echo ""
+
+    # Determine status
+    if [ "$dir_perms" = "2550" ] || [ "$dir_perms" = "550" ]; then
+        echo "Status: 🔒 READ-ONLY"
+        echo ""
+        echo "To enable updates, run: site --writable"
+    elif [ "$dir_perms" = "2750" ] || [ "$dir_perms" = "750" ] || [ "$dir_perms" = "2770" ] || [ "$dir_perms" = "770" ]; then
+        echo "Status: ✏️  WRITABLE"
+        echo ""
+        echo "⚠  Warning: Site is currently writable!"
+        echo "To secure, run: site --readonly"
+    else
+        echo "Status: ⚙️  CUSTOM ($dir_perms)"
+        echo ""
+        echo "To reset, run: site --readonly or site --writable"
+    fi
+}
+
+# Function to request permission change
+request_permission_change() {
+    local mode=$1
+    echo "Requesting permission change for $DOMAIN..."
+    doas /usr/local/bin/site-permissions "$DOMAIN" "$mode"
+}
+
+# Check arguments
+if [ "$#" -ne 1 ]; then
+    show_usage
+    exit 1
+fi
+
+ACTION="$1"
+
+# Process action
+case "$ACTION" in
+    --readonly|--read-only|-r|r)
+        request_permission_change "--readonly"
+        ;;
+    --writable|--writeable|-w|w)
+        request_permission_change "--writable"
+        ;;
+    --status|-s|s)
+        check_status
+        ;;
+    --help|-h|h)
+        show_help
+        ;;
+    *)
+        echo "Error: Unknown option: $ACTION"
+        echo ""
+        echo "Use 'site --help' for usage information"
+        exit 1
+        ;;
+esac
