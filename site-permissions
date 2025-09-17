@@ -1,0 +1,449 @@
+#!/bin/bash
+# Site permissions manager - actual implementation (runs as root)
+# Called by: site wrapper script via doas
+# Usage: site-permissions <domain> <--readonly|--writable>
+
+if [ "$#" -ne 2 ]; then
+    echo "Error: Invalid arguments"
+    echo "Usage: site-permissions <domain> <--readonly|--writable>"
+    exit 1
+fi
+
+DOMAIN="$1"
+ACTION="$2"
+
+# Validate domain exists
+if [ ! -d "/sites/$DOMAIN" ]; then
+    echo "Error: Domain directory /sites/$DOMAIN does not exist"
+    exit 1
+fi
+
+# Function to find web root
+find_web_root() {
+    local domain=$1
+    local web_root=""
+
+    # Check nginx config first
+    if [ -f "/sites/$domain/config/nginx.conf" ]; then
+        local nginx_roots=$(grep -E '^\s*root\s+' "/sites/$domain/config/nginx.conf" | \
+                           grep -v '#' | \
+                           sed 's/^\s*root\s*//;s/;\s*$//' | \
+                           tr -d '"' | tr -d "'")
+
+        for root in $nginx_roots; do
+            case "$root" in
+                /var/www/*|/usr/share/nginx/*) continue ;;
+            esac
+            if [[ "$root" == "/sites/$domain/"* ]] && [ -d "$root" ]; then
+                web_root="$root"
+                break
+            fi
+        done
+    fi
+
+    # Fallback to common paths
+    if [ -z "$web_root" ]; then
+        for check_path in \
+            "/sites/$domain/htdocs" \
+            "/sites/$domain/public" \
+            "/sites/$domain/public_html" \
+            "/sites/$domain/www" \
+            "/sites/$domain/app" \
+            "/sites/$domain/web" \
+            "/sites/$domain/veebiplatvorm/web" \
+            "/sites/$domain/veebiplatform/web"; do
+            if [ -d "$check_path" ]; then
+                web_root="$check_path"
+                break
+            fi
+        done
+    fi
+
+    # Last resort: find by index file
+    if [ -z "$web_root" ]; then
+        for dir in /sites/$domain/*/; do
+            if [ -f "$dir/index.php" ] || [ -f "$dir/index.html" ] || [ -f "$dir/index.js" ]; then
+                web_root="${dir%/}"
+                break
+            fi
+        done
+    fi
+
+    echo "$web_root"
+}
+
+# Get web root
+WEB_ROOT=$(find_web_root "$DOMAIN")
+
+if [ -z "$WEB_ROOT" ] || [ ! -d "$WEB_ROOT" ]; then
+    echo "Error: Could not find web root for domain: $DOMAIN"
+    exit 1
+fi
+
+# Get correct user (owner of the domain directory)
+SITE_USER=$(stat -c '%U' "/sites/$DOMAIN")
+
+# Function to set permissions
+set_permissions() {
+    local mode=$1  # readonly or writable
+
+    echo "========================================="
+    if [ "$mode" = "readonly" ]; then
+        echo "Setting $DOMAIN to READ-ONLY mode"
+    else
+        echo "Setting $DOMAIN to WRITABLE mode"
+    fi
+    echo "========================================="
+    echo "Web root: $WEB_ROOT"
+    echo "Owner: $SITE_USER:nginx"
+    echo ""
+
+    # Fix ownership for entire site directory (not just web root)
+    echo "→ Ensuring correct ownership ($SITE_USER:nginx) for entire site..."
+    find "/sites/$DOMAIN" \( ! -user "$SITE_USER" -o ! -group nginx \) -exec chown "$SITE_USER:nginx" {} +
+
+    # Install/Update WordPress read-only notice plugin if this is a WordPress site
+    if [ -f "$WEB_ROOT/wp-config.php" ]; then
+        echo "→ WordPress site detected"
+        MU_PLUGINS_DIR="$WEB_ROOT/wp-content/mu-plugins"
+        NOTICE_PLUGIN="$MU_PLUGINS_DIR/readonly-notice.php"
+
+        # Always update the plugin to ensure latest version
+        echo "→ Installing/updating read-only notice plugin..."
+
+        # Create mu-plugins directory if it doesn't exist
+        if [ ! -d "$MU_PLUGINS_DIR" ]; then
+            mkdir -p "$MU_PLUGINS_DIR"
+            chown "$SITE_USER:nginx" "$MU_PLUGINS_DIR"
+            chmod 2750 "$MU_PLUGINS_DIR"
+        fi
+
+        # Create/overwrite the plugin file with dynamic content
+            cat > "$NOTICE_PLUGIN" << EOPLUGIN
+<?php
+/**
+ * Plugin Name: Read-Only Mode Notice
+ * Description: Displays a warning when the site is in read-only mode
+ * Version: 1.0
+ *
+ * This is a Must-Use plugin that automatically loads.
+ * Place in: wp-content/mu-plugins/readonly-notice.php
+ */
+
+// Only run in admin area
+if (!is_admin()) {
+    return;
+}
+
+/**
+ * Check if site is in read-only mode
+ */
+function sitemgr_check_readonly() {
+    // Check wp-config.php permissions (this file is always read-only in read-only mode)
+    \$wp_config = ABSPATH . 'wp-config.php';
+    if (file_exists(\$wp_config)) {
+        \$perms = substr(sprintf('%o', fileperms(\$wp_config)), -4);
+        // In read-only mode, wp-config.php is 440
+        return (\$perms === '0440' || \$perms === '440');
+    }
+
+    // Fallback: check a core WordPress file
+    \$index = ABSPATH . 'index.php';
+    if (file_exists(\$index)) {
+        \$perms = substr(sprintf('%o', fileperms(\$index)), -4);
+        return (\$perms === '0440' || \$perms === '440');
+    }
+
+    return false;
+}
+
+// Add readonly notice to admin bar
+add_action('admin_bar_menu', function(\$wp_admin_bar) {
+    if (!sitemgr_check_readonly()) {
+        return;
+    }
+
+    // Add to admin bar
+    \$wp_admin_bar->add_node(array(
+        'id'    => 'readonly-mode',
+        'title' => '<span style="color: #fff !important; font-weight: 800;">🔒 READ-ONLY MODE</span>',
+        'parent' => false,
+        'meta'  => array(
+            'class' => 'readonly-mode-item',
+            'title' => 'Site is in read-only mode - click for details'
+        )
+    ));
+}, 100);
+
+/**
+ * Add visual indicators
+ */
+add_action('admin_head', function() {
+    if (!sitemgr_check_readonly()) {
+        return;
+    }
+    ?>
+    <style>
+        /* Red admin bar */
+        #wpadminbar {
+            background: linear-gradient(90deg, #dc3545 0%, #c82333 100%) !important;
+        }
+
+        /* Style the readonly mode item in admin bar */
+        #wp-admin-bar-readonly-mode {
+            float: right !important;
+        }
+
+        #wp-admin-bar-readonly-mode .ab-item {
+            background: rgba(0,0,0,0.2) !important;
+            color: #fff !important;
+        }
+
+        #wp-admin-bar-readonly-mode:hover .ab-item {
+            background: rgba(0,0,0,0.3) !important;
+        }
+    </style>
+
+    <!-- Tooltip div that appears on hover -->
+    <div id="readonly-tooltip" style="display: none; position: fixed; top: 42px; right: 10px; z-index: 100000; background: white; color: #333; padding: 15px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); width: 450px; text-align: left; font-weight: normal; font-size: 12px;">
+        <div style="position: absolute; top: -8px; right: 30px; width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-bottom: 8px solid white;"></div>
+        <strong style="color: #dc3545;">To update WP/plugins/themes:</strong><br><br>
+        1. Ask <a href="mailto:it@torva.ee" style="color: #0073aa; text-decoration: underline;">it@torva.ee</a> to add your SSH public key<br><br>
+        2. In Terminal, run: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">ssh $SITE_USER@$DOMAIN</code><br><br>
+        3. Make site writeable: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -w</code><br><br>
+        4. Update WordPress, plugins or themes<br><br>
+        5. Re-secure the site: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -r</code>
+    </div>
+
+    <style>
+        @media screen and (max-width: 782px) {
+            #readonly-tooltip { top: 56px !important; }
+        }
+
+        /* No need for extra margin since not using separate banner */
+        #wpbody { margin-top: 0; }
+
+        /* Mark update/save buttons */
+        .button-primary:not(.readonly-checked) {
+            position: relative;
+        }
+
+        .button-primary:not(.readonly-checked)::after {
+            content: " 🔒";
+        }
+    </style>
+    <script>
+    jQuery(document).ready(function(\$) {
+        // Add warnings to update buttons
+        \$('.button-primary').each(function() {
+            var text = \$(this).text().toLowerCase();
+            if (text.includes('update') || text.includes('save') ||
+                text.includes('publish') || text.includes('install')) {
+                \$(this).addClass('readonly-checked');
+                \$(this).attr('title', 'Site is in read-only mode - this action will fail');
+            }
+        });
+
+        // Tooltip functionality for admin bar item
+        var readonlyItem = \$('#wp-admin-bar-readonly-mode');
+        var tooltip = \$('#readonly-tooltip');
+        var hideTimeout;
+
+        readonlyItem.on('mouseenter', function() {
+            clearTimeout(hideTimeout);
+            tooltip.stop(true, true).fadeIn(200);
+        });
+
+        readonlyItem.on('mouseleave', function() {
+            hideTimeout = setTimeout(function() {
+                tooltip.stop(true, true).fadeOut(200);
+            }, 300);
+        });
+
+        tooltip.on('mouseenter', function() {
+            clearTimeout(hideTimeout);
+        });
+
+        tooltip.on('mouseleave', function() {
+            tooltip.stop(true, true).fadeOut(200);
+        });
+    });
+    </script>
+    <?php
+});
+EOPLUGIN
+
+        # Set proper ownership and permissions
+        chown "$SITE_USER:nginx" "$NOTICE_PLUGIN"
+        chmod 440 "$NOTICE_PLUGIN"
+
+        echo "   ✓ WordPress read-only notice plugin installed/updated"
+    fi
+
+    # Set base permissions for entire site directory (excluding web root which gets special handling)
+    echo "→ Securing site directory structure..."
+    if [ "$mode" = "readonly" ]; then
+        # Set restrictive permissions on entire site (web root will be overridden later)
+        chmod -R u=r,u+X,g=r,g+X,o= "/sites/$DOMAIN"
+        # Add setgid only to directories
+        find "/sites/$DOMAIN" -type d -exec chmod g+s {} +
+
+        # Keep certain directories writable for user operation
+        echo "→ Keeping essential directories writable..."
+        for essential_dir in \
+            "/sites/$DOMAIN/.config" \
+            "/sites/$DOMAIN/.local" \
+            "/sites/$DOMAIN/.cache" \
+            "/sites/$DOMAIN/tmp" \
+            "/sites/$DOMAIN/logs" \
+            "/sites/$DOMAIN/.ssh"; do
+            if [ -d "$essential_dir" ]; then
+                chmod -R u=rwX,g=rX,o= "$essential_dir"
+                # Ensure setgid on directories for group inheritance
+                find "$essential_dir" -type d -exec chmod g+s {} +
+            fi
+        done
+    else
+        # Set writable permissions on entire site (web root will be overridden later)
+        chmod -R u=rw,u+X,g=r,g+X,o= "/sites/$DOMAIN"
+        # Add setgid only to directories
+        find "/sites/$DOMAIN" -type d -exec chmod g+s {} +
+    fi
+
+    if [ "$mode" = "readonly" ]; then
+        # Count files and directories for progress indication
+        echo "→ Analyzing web root..."
+        DIR_COUNT=$(find "$WEB_ROOT" -type d 2>/dev/null | wc -l)
+        FILE_COUNT=$(find "$WEB_ROOT" -type f 2>/dev/null | wc -l)
+        echo "   Found $DIR_COUNT directories"
+        echo "   Found $FILE_COUNT files"
+
+        # Set read-only permissions
+        echo "→ Setting read-only permissions..."
+        if [ $DIR_COUNT -gt 1000 ] || [ $FILE_COUNT -gt 5000 ]; then
+            echo "   Large site detected, this may take a moment..."
+        fi
+
+        echo "   Setting permissions recursively (dirs: 2550, files: 440)"
+        # u=r,g=r,o= sets read for user/group, nothing for others
+        # u+X,g+X adds execute only to directories
+        chmod -R u=r,u+X,g=r,g+X,o= "$WEB_ROOT"
+        # Add setgid only to directories
+        find "$WEB_ROOT" -type d -exec chmod g+s {} +
+
+        # Apply exceptions from readwritedirectories.txt
+        if [ -f "/sites/$DOMAIN/config/readwritedirectories.txt" ]; then
+            echo "→ Applying write exceptions..."
+            EXCEPTION_COUNT=0
+            while IFS= read -r dir; do
+                echo "$dir" | grep -q '^#' && continue
+                [ -z "$dir" ] && continue
+
+                case "$dir" in
+                    /*) check_dir="$dir" ;;
+                    *) check_dir="$WEB_ROOT/$dir" ;;
+                esac
+
+                if [ -d "$check_dir" ]; then
+                    EXCEPTION_COUNT=$((EXCEPTION_COUNT + 1))
+                    echo "   Keeping writable: $dir"
+                    chmod -R u=rw,u+X,g=r,g+X,o= "$check_dir"
+                    find "$check_dir" -type d -exec chmod g+s {} +
+                fi
+            done < "/sites/$DOMAIN/config/readwritedirectories.txt"
+            if [ $EXCEPTION_COUNT -gt 0 ]; then
+                echo "   Applied $EXCEPTION_COUNT exception directories"
+            fi
+        fi
+
+        echo ""
+        echo "✅ Site is now READ-ONLY"
+        echo "   Directories: 2550 (r-xr-s---)"
+        echo "   Files: 440 (r--r-----)"
+    else
+        # Count files and directories for progress indication
+        echo "→ Analyzing web root..."
+        DIR_COUNT=$(find "$WEB_ROOT" -type d 2>/dev/null | wc -l)
+        FILE_COUNT=$(find "$WEB_ROOT" -type f 2>/dev/null | wc -l)
+        echo "   Found $DIR_COUNT directories"
+        echo "   Found $FILE_COUNT files"
+
+        # Set writable permissions
+        echo "→ Setting writable permissions..."
+        if [ $DIR_COUNT -gt 1000 ] || [ $FILE_COUNT -gt 5000 ]; then
+            echo "   Large site detected, this may take a moment..."
+        fi
+
+        echo "   Setting permissions recursively (dirs: 2750, files: 640)"
+        # u=rw,g=r,o= sets read/write for user, read for group, nothing for others
+        # u+X,g+X adds execute only to directories
+        chmod -R u=rw,u+X,g=r,g+X,o= "$WEB_ROOT"
+        # Add setgid only to directories
+        find "$WEB_ROOT" -type d -exec chmod g+s {} +
+
+        # WordPress special handling
+        if [ -f "$WEB_ROOT/wp-config.php" ]; then
+            echo "→ WordPress detected, applying enhanced permissions..."
+            WP_ENHANCED=0
+            for wp_dir in wp-content wp-content/uploads wp-content/themes wp-content/plugins wp-content/upgrade; do
+                if [ -d "$WEB_ROOT/$wp_dir" ]; then
+                    WP_ENHANCED=$((WP_ENHANCED + 1))
+                    echo "   Enhanced permissions for: $wp_dir"
+                    # Both user and group get full read/write, X adds execute for directories only
+                    chmod -R u=rw,u+X,g=rw,g+X,o= "$WEB_ROOT/$wp_dir"
+                    find "$WEB_ROOT/$wp_dir" -type d -exec chmod g+s {} +
+                fi
+            done
+            chmod 640 "$WEB_ROOT/wp-config.php"
+            echo "   Applied enhanced permissions to $WP_ENHANCED WordPress directories"
+        fi
+
+        # Drupal special handling
+        if [ -f "$WEB_ROOT/sites/default/settings.php" ] || [ -f "$WEB_ROOT/core/lib/Drupal.php" ]; then
+            echo "→ Drupal detected, applying enhanced permissions..."
+            DRUPAL_ENHANCED=0
+            for drupal_dir in sites/default/files modules themes; do
+                if [ -d "$WEB_ROOT/$drupal_dir" ]; then
+                    DRUPAL_ENHANCED=$((DRUPAL_ENHANCED + 1))
+                    echo "   Enhanced permissions for: $drupal_dir"
+                    # Both user and group get full read/write, X adds execute for directories only
+                    chmod -R u=rw,u+X,g=rw,g+X,o= "$WEB_ROOT/$drupal_dir"
+                    find "$WEB_ROOT/$drupal_dir" -type d -exec chmod g+s {} +
+                fi
+            done
+            echo "   Applied enhanced permissions to $DRUPAL_ENHANCED Drupal directories"
+        fi
+
+        echo ""
+        echo "✅ Site is now WRITABLE"
+        echo "   Directories: 2750 (rwxr-s---)"
+        echo "   Files: 640 (rw-r-----)"
+        if [ -f "$WEB_ROOT/wp-config.php" ]; then
+            echo "   WordPress dirs: 2770 (rwxrws---)"
+            echo "   WordPress files: 660 (rw-rw----)"
+        fi
+        echo ""
+        echo "⚠  IMPORTANT: Run 'site --readonly' when updates are complete!"
+        echo ""
+        echo "You can now:"
+        echo "  • Update CMS core"
+        echo "  • Install/update plugins or modules"
+        echo "  • Upload media files"
+        echo "  • Modify configuration files"
+    fi
+}
+
+# Execute based on action
+case "$ACTION" in
+    --readonly)
+        set_permissions "readonly"
+        ;;
+    --writable)
+        set_permissions "writable"
+        ;;
+    *)
+        echo "Error: Invalid action: $ACTION"
+        echo "Use --readonly or --writable"
+        exit 1
+        ;;
+esac
