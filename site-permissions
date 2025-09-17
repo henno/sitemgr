@@ -187,23 +187,19 @@ add_action('admin_head', function() {
     }
     ?>
     <style>
-        /* Orange admin bar */
-        #wpadminbar {
-            background: linear-gradient(90deg, #fd7e14 0%, #e56000 100%) !important;
-        }
-
-        /* Style the readonly mode item in admin bar */
+        /* Style the readonly mode item in admin bar with orange background */
         #wp-admin-bar-readonly-mode {
             float: right !important;
         }
 
         #wp-admin-bar-readonly-mode .ab-item {
-            background: rgba(0,0,0,0.2) !important;
+            background: linear-gradient(90deg, #fd7e14 0%, #e56000 100%) !important;
             color: #fff !important;
+            font-weight: 800 !important;
         }
 
         #wp-admin-bar-readonly-mode:hover .ab-item {
-            background: rgba(0,0,0,0.3) !important;
+            background: linear-gradient(90deg, #e56000 0%, #d14e00 100%) !important;
         }
     </style>
 
