@@ -262,7 +262,7 @@ add_action('admin_head', function() {
             &nbsp;&nbsp;&nbsp;&nbsp;• Lisa avalik võti ja selgita miks vajad ligipääsu (nt WordPress uuendused)
         </div>
 
-        <strong style="color: #fd7e14;">📝 IGA KORD kui on vaja WordPressi, pluginaid või kujundusfaile uuendada:</strong><br><br>
+        <strong style="color: #d14e00;">📝 IGA KORD kui on vaja WordPressi, pluginaid või kujundusfaile uuendada:</strong><br><br>
         1. Terminalis käivita: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">ssh ${SITE_USER}@<?php echo sitemgr_get_server_ip(); ?></code><br><br>
         2. Muuda sait kirjutatavaks: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -w</code><br><br>
         3. Uuenda WordPressi, pistikprogramme või kujundusi<br><br>
