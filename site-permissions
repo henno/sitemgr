@@ -140,20 +140,37 @@ if (!is_admin()) {
 
 // Get server IP dynamically
 function sitemgr_get_server_ip() {
-    // Try to get the server's external IP
-    \$ip = gethostbyname(gethostname());
+    // Start with the fallback IP
+    \$ip = '157.180.119.234';
 
-    // If that doesn't work, try to get from server vars
-    if (\$ip === gethostname() || strpos(\$ip, '127.') === 0) {
-        // Try to get from shell command (most reliable for external IP)
-        \$shell_ip = trim(shell_exec("ip addr show | grep -E 'inet.*scope global' | head -1 | awk '{print \$2}' | cut -d'/' -f1"));
-        if (!empty(\$shell_ip)) {
-            \$ip = \$shell_ip;
-        } elseif (!empty(\$_SERVER['SERVER_ADDR'])) {
-            \$ip = \$_SERVER['SERVER_ADDR'];
-        } else {
-            \$ip = '157.180.119.234'; // Fallback to known IP
+    // Try different methods to get the actual IP
+    try {
+        // Method 1: Check if shell_exec is available and enabled
+        if (function_exists('shell_exec') && !in_array('shell_exec', array_map('trim', explode(',', ini_get('disable_functions'))))) {
+            \$shell_ip = @shell_exec("ip addr show 2>/dev/null | grep -E 'inet.*scope global' | head -1 | awk '{print \$2}' | cut -d'/' -f1");
+            if (!empty(\$shell_ip)) {
+                \$shell_ip = trim(\$shell_ip);
+                if (filter_var(\$shell_ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                    return \$shell_ip;
+                }
+            }
         }
+
+        // Method 2: Try SERVER_ADDR
+        if (!empty(\$_SERVER['SERVER_ADDR']) && filter_var(\$_SERVER['SERVER_ADDR'], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+            return \$_SERVER['SERVER_ADDR'];
+        }
+
+        // Method 3: Try gethostbyname
+        \$hostname = gethostname();
+        if (\$hostname !== false) {
+            \$host_ip = gethostbyname(\$hostname);
+            if (\$host_ip !== \$hostname && filter_var(\$host_ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) && strpos(\$host_ip, '127.') !== 0) {
+                return \$host_ip;
+            }
+        }
+    } catch (Exception \$e) {
+        // If anything fails, use fallback
     }
 
     return \$ip;
