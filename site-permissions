@@ -118,12 +118,15 @@ set_permissions() {
             chmod 2750 "$MU_PLUGINS_DIR"
         fi
 
+        # Get primary domain for multisite (domain before first underscore)
+        PRIMARY_DOMAIN="${DOMAIN%%_*}"
+
         # Create/overwrite the plugin file with dynamic content
             cat > "$NOTICE_PLUGIN" << EOPLUGIN
 <?php
 /**
- * Plugin Name: Read-Only Mode Notice
- * Description: Displays a warning when the site is in read-only mode
+ * Plugin Name: Kaitstud režiimi teavitus
+ * Description: Kuvab hoiatuse, kui sait on kaitstud režiimis
  * Version: 1.0
  *
  * This is a Must-Use plugin that automatically loads.
@@ -166,11 +169,11 @@ add_action('admin_bar_menu', function(\$wp_admin_bar) {
     // Add to admin bar
     \$wp_admin_bar->add_node(array(
         'id'    => 'readonly-mode',
-        'title' => '<span style="color: #fff !important; font-weight: 800;">🔒 READ-ONLY MODE</span>',
+        'title' => '<span style="color: #fff !important; font-weight: 800;">🔒 KAITSTUD REŽIIM</span>',
         'parent' => false,
         'meta'  => array(
             'class' => 'readonly-mode-item',
-            'title' => 'Site is in read-only mode - click for details'
+            'title' => 'Sait on kaitstud režiimis - kliki lisainfo saamiseks'
         )
     ));
 }, 100);
@@ -184,9 +187,9 @@ add_action('admin_head', function() {
     }
     ?>
     <style>
-        /* Red admin bar */
+        /* Orange admin bar */
         #wpadminbar {
-            background: linear-gradient(90deg, #dc3545 0%, #c82333 100%) !important;
+            background: linear-gradient(90deg, #fd7e14 0%, #e56000 100%) !important;
         }
 
         /* Style the readonly mode item in admin bar */
@@ -207,12 +210,12 @@ add_action('admin_head', function() {
     <!-- Tooltip div that appears on hover -->
     <div id="readonly-tooltip" style="display: none; position: fixed; top: 42px; right: 10px; z-index: 100000; background: white; color: #333; padding: 15px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); width: 450px; text-align: left; font-weight: normal; font-size: 12px;">
         <div style="position: absolute; top: -8px; right: 30px; width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-bottom: 8px solid white;"></div>
-        <strong style="color: #dc3545;">To update WP/plugins/themes:</strong><br><br>
-        1. Ask <a href="mailto:it@torva.ee" style="color: #0073aa; text-decoration: underline;">it@torva.ee</a> to add your SSH public key<br><br>
-        2. In Terminal, run: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">ssh $SITE_USER@$DOMAIN</code><br><br>
-        3. Make site writeable: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -w</code><br><br>
-        4. Update WordPress, plugins or themes<br><br>
-        5. Re-secure the site: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -r</code>
+        <strong style="color: #fd7e14;">WordPressi/pistikprogrammide/kujunduste uuendamiseks:</strong><br><br>
+        1. Küsi <a href="mailto:it@torva.ee" style="color: #0073aa; text-decoration: underline;">it@torva.ee</a> käest SSH võtme lisamist<br><br>
+        2. Terminalis käivita: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">ssh ${SITE_USER}@${PRIMARY_DOMAIN}</code><br><br>
+        3. Muuda sait kirjutatavaks: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -w</code><br><br>
+        4. Uuenda WordPressi, pistikprogramme või kujundusi<br><br>
+        5. Muuda sait tagasi kaitstud režiimi: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -r</code>
     </div>
 
     <style>
@@ -240,7 +243,7 @@ add_action('admin_head', function() {
             if (text.includes('update') || text.includes('save') ||
                 text.includes('publish') || text.includes('install')) {
                 \$(this).addClass('readonly-checked');
-                \$(this).attr('title', 'Site is in read-only mode - this action will fail');
+                \$(this).attr('title', 'Sait on kaitstud režiimis - see toiming ebaõnnestub');
             }
         });
 
