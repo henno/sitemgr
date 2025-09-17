@@ -214,18 +214,23 @@ add_action('admin_head', function() {
             <strong>Miks kaitstud režiim?</strong><br>
             Kaitstud režiim hoiab teie saidi turvalisena, takistades pahatahtlikel skriptidel ja häkkeritel failide muutmist. See on veebisaidi turvalisuse parim praktika.
         </div>
-        <strong style="color: #fd7e14;">WordPressi/pistikprogrammide/kujunduste uuendamiseks:</strong><br><br>
-        1. <strong>Genereeri SSH võti</strong> (ainult esimesel korral):<br>
-        &nbsp;&nbsp;&nbsp;&nbsp;• Windowsis: Ava PowerShell ja käivita:<br>
-        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">ssh-keygen -t ed25519</code><br>
-        &nbsp;&nbsp;&nbsp;&nbsp;• Vajuta Enter kolm korda (kasuta vaikesätteid)<br>
-        &nbsp;&nbsp;&nbsp;&nbsp;• Kopeeri avalik võti:<br>
-        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">type \$env:USERPROFILE\\.ssh\\id_ed25519.pub</code><br><br>
-        2. Saada avalik võti <a href="mailto:it@torva.ee" style="color: #0073aa; text-decoration: underline;">it@torva.ee</a> meilile<br><br>
-        3. Terminalis käivita: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">ssh ${SITE_USER}@${PRIMARY_DOMAIN}</code><br><br>
-        4. Muuda sait kirjutatavaks: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -w</code><br><br>
-        5. Uuenda WordPressi, pistikprogramme või kujundusi<br><br>
-        6. Muuda sait tagasi kaitstud režiimi: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -r</code>
+
+        <div style="background: #e8f4f8; border-left: 4px solid #0073aa; padding: 10px; margin-bottom: 12px; border-radius: 4px;">
+            <strong style="color: #0073aa;">🔧 ÜHEKORDNE SEADISTUS (ainult esimesel korral):</strong><br><br>
+            1. <strong>Genereeri SSH võti</strong> Windowsis:<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;• Ava PowerShell ja käivita:<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">ssh-keygen -t ed25519</code><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;• Vajuta Enter kolm korda (kasuta vaikesätteid)<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;• Kopeeri avalik võti:<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">type \$env:USERPROFILE\\.ssh\\id_ed25519.pub</code><br><br>
+            2. <strong>Saada avalik võti</strong> <a href="mailto:it@torva.ee" style="color: #0073aa; text-decoration: underline;">it@torva.ee</a> meilile
+        </div>
+
+        <strong style="color: #fd7e14;">📝 IGA KORD kui on vaja uuendada:</strong><br><br>
+        1. Terminalis käivita: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">ssh ${SITE_USER}@${PRIMARY_DOMAIN}</code><br><br>
+        2. Muuda sait kirjutatavaks: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -w</code><br><br>
+        3. Uuenda WordPressi, pistikprogramme või kujundusi<br><br>
+        4. <strong style="color: #dc3545;">⚠️ TÄHTIS:</strong> Muuda sait tagasi kaitstud režiimi: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -r</code>
     </div>
 
     <style>
