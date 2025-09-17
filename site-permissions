@@ -253,20 +253,25 @@ add_action('admin_head', function() {
             <strong style="color: #0073aa;">🔧 ÜHEKORDNE SEADISTUS (ainult esimesel korral):</strong><br><br>
             1. <strong>Genereeri SSH võti</strong> Windowsis:<br>
             &nbsp;&nbsp;&nbsp;&nbsp;• Ava PowerShell ja käivita:<br>
-            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">ssh-keygen -t ed25519</code><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<code id="cmd1" style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">ssh-keygen -t ed25519</code>
+            <button onclick="copyCommand('cmd1')" style="margin-left: 8px; padding: 2px 8px; border: 1px solid #ccc; background: #fff; border-radius: 3px; cursor: pointer; font-size: 11px;">📋 Kopeeri</button><br>
             &nbsp;&nbsp;&nbsp;&nbsp;• Vajuta Enter kolm korda (kasuta vaikesätteid)<br>
             &nbsp;&nbsp;&nbsp;&nbsp;• Kopeeri avalik võti:<br>
-            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">type \$env:USERPROFILE\\.ssh\\id_ed25519.pub</code><br><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<code id="cmd2" style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">type \$env:USERPROFILE\\.ssh\\id_ed25519.pub</code>
+            <button onclick="copyCommand('cmd2')" style="margin-left: 8px; padding: 2px 8px; border: 1px solid #ccc; background: #fff; border-radius: 3px; cursor: pointer; font-size: 11px;">📋 Kopeeri</button><br><br>
             2. <strong>Saada meilile</strong> <a href="mailto:it@torva.ee?subject=SSH%20võtme%20lisamine%20saidile%20${PRIMARY_DOMAIN}" style="color: #0073aa; text-decoration: underline;">it@torva.ee</a>:<br>
             &nbsp;&nbsp;&nbsp;&nbsp;• Teema: SSH võtme lisamine saidile ${PRIMARY_DOMAIN}<br>
             &nbsp;&nbsp;&nbsp;&nbsp;• Lisa avalik võti ja selgita miks vajad ligipääsu (nt WordPress uuendused)
         </div>
 
         <strong style="color: #d14e00;">📝 IGA KORD kui on vaja WordPressi, pluginaid või kujundusfaile uuendada:</strong><br><br>
-        1. Terminalis käivita: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">ssh ${SITE_USER}@<?php echo sitemgr_get_server_ip(); ?></code><br><br>
-        2. Muuda sait kirjutatavaks: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -w</code><br><br>
+        1. Terminalis käivita: <code id="cmd3" style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">ssh ${SITE_USER}@<?php echo sitemgr_get_server_ip(); ?></code>
+        <button onclick="copyCommand('cmd3')" style="margin-left: 8px; padding: 2px 8px; border: 1px solid #ccc; background: #fff; border-radius: 3px; cursor: pointer; font-size: 11px;">📋 Kopeeri</button><br><br>
+        2. Muuda sait kirjutatavaks: <code id="cmd4" style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -w</code>
+        <button onclick="copyCommand('cmd4')" style="margin-left: 8px; padding: 2px 8px; border: 1px solid #ccc; background: #fff; border-radius: 3px; cursor: pointer; font-size: 11px;">📋 Kopeeri</button><br><br>
         3. Uuenda WordPressi, pistikprogramme või kujundusi<br><br>
-        4. <strong style="color: #dc3545;">⚠️ TÄHTIS:</strong> Muuda sait tagasi kaitstud režiimi: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -r</code>
+        4. <strong style="color: #dc3545;">⚠️ TÄHTIS:</strong> Muuda sait tagasi kaitstud režiimi: <code id="cmd5" style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -r</code>
+        <button onclick="copyCommand('cmd5')" style="margin-left: 8px; padding: 2px 8px; border: 1px solid #ccc; background: #fff; border-radius: 3px; cursor: pointer; font-size: 11px;">📋 Kopeeri</button>
     </div>
 
     <style>
@@ -287,6 +292,41 @@ add_action('admin_head', function() {
         }
     </style>
     <script>
+    function copyCommand(elementId) {
+        var elem = document.getElementById(elementId);
+        if (elem) {
+            var textToCopy = elem.textContent || elem.innerText;
+
+            // Create temporary textarea
+            var tempTextArea = document.createElement('textarea');
+            tempTextArea.value = textToCopy;
+            tempTextArea.style.position = 'fixed';
+            tempTextArea.style.left = '-999999px';
+            tempTextArea.style.top = '-999999px';
+            document.body.appendChild(tempTextArea);
+            tempTextArea.select();
+
+            try {
+                document.execCommand('copy');
+                // Change button text temporarily
+                var btn = event.target;
+                var originalText = btn.innerHTML;
+                btn.innerHTML = '✓ Kopeeritud!';
+                btn.style.background = '#d4edda';
+                btn.style.borderColor = '#28a745';
+                setTimeout(function() {
+                    btn.innerHTML = originalText;
+                    btn.style.background = '#fff';
+                    btn.style.borderColor = '#ccc';
+                }, 2000);
+            } catch (err) {
+                console.error('Copy failed:', err);
+            }
+
+            document.body.removeChild(tempTextArea);
+        }
+    }
+
     jQuery(document).ready(function(\$) {
         // Add warnings to update buttons
         \$('.button-primary').each(function() {
