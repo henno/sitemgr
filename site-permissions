@@ -138,6 +138,27 @@ if (!is_admin()) {
     return;
 }
 
+// Get server IP dynamically
+function sitemgr_get_server_ip() {
+    // Try to get the server's external IP
+    \$ip = gethostbyname(gethostname());
+
+    // If that doesn't work, try to get from server vars
+    if (\$ip === gethostname() || strpos(\$ip, '127.') === 0) {
+        // Try to get from shell command (most reliable for external IP)
+        \$shell_ip = trim(shell_exec("ip addr show | grep -E 'inet.*scope global' | head -1 | awk '{print \$2}' | cut -d'/' -f1"));
+        if (!empty(\$shell_ip)) {
+            \$ip = \$shell_ip;
+        } elseif (!empty(\$_SERVER['SERVER_ADDR'])) {
+            \$ip = \$_SERVER['SERVER_ADDR'];
+        } else {
+            \$ip = '157.180.119.234'; // Fallback to known IP
+        }
+    }
+
+    return \$ip;
+}
+
 /**
  * Check if site is in read-only mode
  */
@@ -225,7 +246,7 @@ add_action('admin_head', function() {
         </div>
 
         <strong style="color: #fd7e14;">📝 IGA KORD kui on vaja uuendada:</strong><br><br>
-        1. Terminalis käivita: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">ssh ${SITE_USER}@157.180.119.234</code><br><br>
+        1. Terminalis käivita: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">ssh ${SITE_USER}@<?php echo sitemgr_get_server_ip(); ?></code><br><br>
         2. Muuda sait kirjutatavaks: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -w</code><br><br>
         3. Uuenda WordPressi, pistikprogramme või kujundusi<br><br>
         4. <strong style="color: #dc3545;">⚠️ TÄHTIS:</strong> Muuda sait tagasi kaitstud režiimi: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -r</code>
