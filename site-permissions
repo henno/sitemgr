@@ -208,8 +208,12 @@ add_action('admin_head', function() {
     </style>
 
     <!-- Tooltip div that appears on hover -->
-    <div id="readonly-tooltip" style="display: none; position: fixed; top: 42px; right: 10px; z-index: 100000; background: white; color: #333; padding: 15px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); width: 450px; text-align: left; font-weight: normal; font-size: 12px;">
+    <div id="readonly-tooltip" style="display: none; position: fixed; top: 42px; right: 10px; z-index: 100000; background: white; color: #333; padding: 15px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); width: 500px; text-align: left; font-weight: normal; font-size: 12px;">
         <div style="position: absolute; top: -8px; right: 30px; width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-bottom: 8px solid white;"></div>
+        <div style="background: #fff3cd; border-left: 4px solid #fd7e14; padding: 10px; margin-bottom: 12px; border-radius: 4px;">
+            <strong>Miks kaitstud režiim?</strong><br>
+            Kaitstud režiim hoiab teie saidi turvalisena, takistades pahatahtlikel skriptidel ja häkkeritel failide muutmist. See on veebisaidi turvalisuse parim praktika.
+        </div>
         <strong style="color: #fd7e14;">WordPressi/pistikprogrammide/kujunduste uuendamiseks:</strong><br><br>
         1. Küsi <a href="mailto:it@torva.ee" style="color: #0073aa; text-decoration: underline;">it@torva.ee</a> käest SSH võtme lisamist<br><br>
         2. Terminalis käivita: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">ssh ${SITE_USER}@${PRIMARY_DOMAIN}</code><br><br>
