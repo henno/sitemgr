@@ -223,7 +223,9 @@ add_action('admin_head', function() {
             &nbsp;&nbsp;&nbsp;&nbsp;• Vajuta Enter kolm korda (kasuta vaikesätteid)<br>
             &nbsp;&nbsp;&nbsp;&nbsp;• Kopeeri avalik võti:<br>
             &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">type \$env:USERPROFILE\\.ssh\\id_ed25519.pub</code><br><br>
-            2. <strong>Saada avalik võti</strong> <a href="mailto:it@torva.ee" style="color: #0073aa; text-decoration: underline;">it@torva.ee</a> meilile
+            2. <strong>Saada meilile</strong> <a href="mailto:it@torva.ee?subject=SSH%20võtme%20lisamine%20saidile%20${PRIMARY_DOMAIN}" style="color: #0073aa; text-decoration: underline;">it@torva.ee</a>:<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;• Teema: SSH võtme lisamine saidile ${PRIMARY_DOMAIN}<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;• Lisa avalik võti ja maini millisele saidile ligipääsu vajad
         </div>
 
         <strong style="color: #fd7e14;">📝 IGA KORD kui on vaja uuendada:</strong><br><br>
