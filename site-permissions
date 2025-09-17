@@ -253,25 +253,60 @@ add_action('admin_head', function() {
             <strong style="color: #0073aa;">🔧 ÜHEKORDNE SEADISTUS (ainult esimesel korral):</strong><br><br>
             1. <strong>Genereeri SSH võti</strong> Windowsis:<br>
             &nbsp;&nbsp;&nbsp;&nbsp;• Ava PowerShell ja käivita:<br>
-            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<code id="cmd1" style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">ssh-keygen -t ed25519</code>
-            <button onclick="copyCommand('cmd1')" style="margin-left: 8px; padding: 2px 8px; border: 1px solid #ccc; background: #fff; border-radius: 3px; cursor: pointer; font-size: 11px;">📋 Kopeeri</button><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cmd-box">
+                <code id="cmd1">ssh-keygen -t ed25519</code>
+                <button onclick="copyCommand('cmd1')" class="copy-btn" title="Kopeeri käsk">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                </button>
+            </span><br>
             &nbsp;&nbsp;&nbsp;&nbsp;• Vajuta Enter kolm korda (kasuta vaikesätteid)<br>
             &nbsp;&nbsp;&nbsp;&nbsp;• Kopeeri avalik võti:<br>
-            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<code id="cmd2" style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">type \$env:USERPROFILE\\.ssh\\id_ed25519.pub</code>
-            <button onclick="copyCommand('cmd2')" style="margin-left: 8px; padding: 2px 8px; border: 1px solid #ccc; background: #fff; border-radius: 3px; cursor: pointer; font-size: 11px;">📋 Kopeeri</button><br><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cmd-box">
+                <code id="cmd2">type \$env:USERPROFILE\\.ssh\\id_ed25519.pub</code>
+                <button onclick="copyCommand('cmd2')" class="copy-btn" title="Kopeeri käsk">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                </button>
+            </span><br><br>
             2. <strong>Saada meilile</strong> <a href="mailto:it@torva.ee?subject=SSH%20võtme%20lisamine%20saidile%20${PRIMARY_DOMAIN}" style="color: #0073aa; text-decoration: underline;">it@torva.ee</a>:<br>
             &nbsp;&nbsp;&nbsp;&nbsp;• Teema: SSH võtme lisamine saidile ${PRIMARY_DOMAIN}<br>
             &nbsp;&nbsp;&nbsp;&nbsp;• Lisa avalik võti ja selgita miks vajad ligipääsu (nt WordPress uuendused)
         </div>
 
         <strong style="color: #d14e00;">📝 IGA KORD kui on vaja WordPressi, pluginaid või kujundusfaile uuendada:</strong><br><br>
-        1. Terminalis käivita: <code id="cmd3" style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">ssh ${SITE_USER}@<?php echo sitemgr_get_server_ip(); ?></code>
-        <button onclick="copyCommand('cmd3')" style="margin-left: 8px; padding: 2px 8px; border: 1px solid #ccc; background: #fff; border-radius: 3px; cursor: pointer; font-size: 11px;">📋 Kopeeri</button><br><br>
-        2. Muuda sait kirjutatavaks: <code id="cmd4" style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -w</code>
-        <button onclick="copyCommand('cmd4')" style="margin-left: 8px; padding: 2px 8px; border: 1px solid #ccc; background: #fff; border-radius: 3px; cursor: pointer; font-size: 11px;">📋 Kopeeri</button><br><br>
+        1. Terminalis käivita: <span class="cmd-box">
+            <code id="cmd3">ssh ${SITE_USER}@<?php echo sitemgr_get_server_ip(); ?></code>
+            <button onclick="copyCommand('cmd3')" class="copy-btn" title="Kopeeri käsk">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+            </button>
+        </span><br><br>
+        2. Muuda sait kirjutatavaks: <span class="cmd-box">
+            <code id="cmd4">site -w</code>
+            <button onclick="copyCommand('cmd4')" class="copy-btn" title="Kopeeri käsk">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+            </button>
+        </span><br><br>
         3. Uuenda WordPressi, pistikprogramme või kujundusi<br><br>
-        4. <strong style="color: #dc3545;">⚠️ TÄHTIS:</strong> Muuda sait tagasi kaitstud režiimi: <code id="cmd5" style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">site -r</code>
-        <button onclick="copyCommand('cmd5')" style="margin-left: 8px; padding: 2px 8px; border: 1px solid #ccc; background: #fff; border-radius: 3px; cursor: pointer; font-size: 11px;">📋 Kopeeri</button>
+        4. <strong style="color: #dc3545;">⚠️ TÄHTIS:</strong> Muuda sait tagasi kaitstud režiimi: <span class="cmd-box">
+            <code id="cmd5">site -r</code>
+            <button onclick="copyCommand('cmd5')" class="copy-btn" title="Kopeeri käsk">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+            </button>
+        </span>
     </div>
 
     <style>
@@ -289,6 +324,59 @@ add_action('admin_head', function() {
 
         .button-primary:not(.readonly-checked)::after {
             content: " 🔒";
+        }
+
+        /* Command box styling */
+        .cmd-box {
+            display: inline-flex;
+            align-items: center;
+            background: #f0f0f0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 0;
+            margin: 2px 0;
+        }
+
+        .cmd-box code {
+            background: transparent !important;
+            border: none !important;
+            padding: 4px 8px !important;
+            margin: 0 !important;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 12px;
+        }
+
+        .cmd-box .copy-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 4px 6px;
+            margin: 0;
+            background: transparent;
+            border: none;
+            border-left: 1px solid #ddd;
+            cursor: pointer;
+            color: #666;
+            transition: all 0.2s ease;
+        }
+
+        .cmd-box .copy-btn:hover {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .cmd-box .copy-btn.copied {
+            color: #28a745;
+            background: #d4edda;
+        }
+
+        .cmd-box .copy-btn.copied svg {
+            display: none;
+        }
+
+        .cmd-box .copy-btn.copied::after {
+            content: "✓";
+            font-weight: bold;
         }
     </style>
     <script>
@@ -308,17 +396,16 @@ add_action('admin_head', function() {
 
             try {
                 document.execCommand('copy');
-                // Change button text temporarily
-                var btn = event.target;
-                var originalText = btn.innerHTML;
-                btn.innerHTML = '✓ Kopeeritud!';
-                btn.style.background = '#d4edda';
-                btn.style.borderColor = '#28a745';
-                setTimeout(function() {
-                    btn.innerHTML = originalText;
-                    btn.style.background = '#fff';
-                    btn.style.borderColor = '#ccc';
-                }, 2000);
+                // Add copied class to button
+                var btn = event.target.closest('.copy-btn');
+                if (btn) {
+                    btn.classList.add('copied');
+                    btn.setAttribute('title', 'Kopeeritud!');
+                    setTimeout(function() {
+                        btn.classList.remove('copied');
+                        btn.setAttribute('title', 'Kopeeri käsk');
+                    }, 2000);
+                }
             } catch (err) {
                 console.error('Copy failed:', err);
             }
