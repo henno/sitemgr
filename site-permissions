@@ -512,9 +512,47 @@ EOPLUGIN
         # Add setgid only to directories
         find "$WEB_ROOT" -type d -exec chmod g+s {} +
 
-        # Apply exceptions from readwritedirectories.txt
+        # WordPress automatic cache/upload directories
+        if [ -f "$WEB_ROOT/wp-config.php" ]; then
+            echo "→ Applying WordPress cache directory exceptions..."
+            WP_EXCEPTION_COUNT=0
+
+            # Common WordPress writable directories
+            WP_WRITABLE_DIRS=(
+                "wp-content/cache"
+                "wp-content/uploads"
+                "wp-content/wflogs"
+                "wp-content/wp-rocket-config"
+                "wp-content/w3tc-config"
+                "wp-content/et-cache"
+                "wp-content/litespeed"
+                "wp-content/advanced-cache.php"
+                "wp-content/object-cache.php"
+            )
+
+            for wp_dir in "${WP_WRITABLE_DIRS[@]}"; do
+                check_path="$WEB_ROOT/$wp_dir"
+                if [ -e "$check_path" ]; then
+                    WP_EXCEPTION_COUNT=$((WP_EXCEPTION_COUNT + 1))
+                    echo "   Keeping writable: $wp_dir"
+                    if [ -d "$check_path" ]; then
+                        chmod -R u=rw,u+X,g=r,g+X,o= "$check_path"
+                        find "$check_path" -type d -exec chmod g+s {} +
+                    else
+                        # It's a file
+                        chmod 640 "$check_path"
+                    fi
+                fi
+            done
+
+            if [ $WP_EXCEPTION_COUNT -gt 0 ]; then
+                echo "   Applied $WP_EXCEPTION_COUNT WordPress exceptions"
+            fi
+        fi
+
+        # Apply custom exceptions from readwritedirectories.txt
         if [ -f "/sites/$DOMAIN/config/readwritedirectories.txt" ]; then
-            echo "→ Applying write exceptions..."
+            echo "→ Applying custom write exceptions..."
             EXCEPTION_COUNT=0
             while IFS= read -r dir; do
                 echo "$dir" | grep -q '^#' && continue
@@ -533,7 +571,7 @@ EOPLUGIN
                 fi
             done < "/sites/$DOMAIN/config/readwritedirectories.txt"
             if [ $EXCEPTION_COUNT -gt 0 ]; then
-                echo "   Applied $EXCEPTION_COUNT exception directories"
+                echo "   Applied $EXCEPTION_COUNT custom exception directories"
             fi
         fi
 
