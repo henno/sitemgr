@@ -278,7 +278,7 @@ add_action('admin_head', function() {
             &nbsp;&nbsp;&nbsp;&nbsp;• Lisa avalik võti ja selgita miks vajad ligipääsu (nt WordPress uuendused)
         </div>
 
-        <strong style="color: #d14e00;">📝 IGA KORD kui on vaja WordPressi, pluginaid või kujundusfaile uuendada:</strong><br><br>
+        <strong style="color: #d14e00;">📝 IGA KORD kui on vaja WordPressi, pluginaid või kujundusfaile uuendada (ei puuduta sisu uuendamist):</strong><br><br>
         1. Terminalis käivita: <span class="cmd-box">
             <code id="cmd3">ssh ${SITE_USER}@<?php echo sitemgr_get_server_ip(); ?></code>
             <button onclick="copyCommand('cmd3')" class="copy-btn" title="Kopeeri käsk">
